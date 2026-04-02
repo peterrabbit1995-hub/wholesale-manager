@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 const menuItems = [
   { href: '/dashboard', label: '홈' },
   { href: '/transactions', label: '거래' },
+  { href: '/invoices', label: '명세서' },
   { href: '/customers', label: '거래처' },
   { href: '/products', label: '상품' },
   { href: '/settings/company', label: '설정' },

@@ -15,6 +15,14 @@ type ProductOption = {
   affects_price: boolean
 }
 
+type SavedItem = {
+  id: string
+  name: string
+  quantity: number
+  unit_price: number
+  total: number
+}
+
 export default function NewTransactionPage() {
   const router = useRouter()
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -28,12 +36,19 @@ export default function NewTransactionPage() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // 옵션 관련
   const [productOptions, setProductOptions] = useState<ProductOption[]>([])
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
-
-  // 단가 출처 표시
   const [priceSource, setPriceSource] = useState('')
+
+  const [savedList, setSavedList] = useState<SavedItem[]>([])
+  const [productSearch, setProductSearch] = useState('')
+
+  const formatPrice = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    return nums ? Number(nums).toLocaleString() : ''
+  }
+
+  const rawPrice = (value: string) => value.replace(/,/g, '')
 
   useEffect(() => {
     loadData()
@@ -48,7 +63,6 @@ export default function NewTransactionPage() {
     setProducts(p || [])
   }
 
-  // 상품 선택 시 → 옵션 로드
   const handleProductChange = async (pid: string) => {
     setProductId(pid)
     setSelectedOptions({})
@@ -67,15 +81,14 @@ export default function NewTransactionPage() {
 
     setProductOptions(opts || [])
 
-    // 옵션이 없으면 바로 가격 조회
     if (!opts || opts.length === 0) {
       await lookupPrice(pid, customerId, {})
     }
   }
 
-  // 거래처 선택 시 → 가격 재조회
   const handleCustomerChange = async (cid: string) => {
     setCustomerId(cid)
+    setSavedList([])
     setUnitPrice('')
     setCostPrice('')
     setPriceSource('')
@@ -84,7 +97,6 @@ export default function NewTransactionPage() {
     await lookupPrice(productId, cid, selectedOptions)
   }
 
-  // 옵션 선택 시 → 가격 재조회
   const handleOptionChange = async (optionName: string, value: string) => {
     const updated = { ...selectedOptions, [optionName]: value }
     setSelectedOptions(updated)
@@ -94,7 +106,6 @@ export default function NewTransactionPage() {
     }
   }
 
-  // ⭐ 단가 조회 (4단계 우선순위)
   const lookupPrice = async (
     pid: string,
     cid: string,
@@ -105,7 +116,6 @@ export default function NewTransactionPage() {
     const customer = customers.find((c) => c.id === cid)
     const tierId = customer?.default_tier_id || null
 
-    // 입고가 조회 (level 0)
     const { data: costTier } = await supabase
       .from('price_tiers')
       .select('id')
@@ -123,7 +133,6 @@ export default function NewTransactionPage() {
       if (costData) setCostPrice(String(costData.price))
     }
 
-    // 1순위: 거래처별 특별 단가
     const { data: specialPrice } = await supabase
       .from('customer_prices')
       .select('special_price')
@@ -137,7 +146,6 @@ export default function NewTransactionPage() {
       return
     }
 
-    // 2순위: 옵션별 가격 (옵션 선택 + affects_price인 경우)
     if (tierId) {
       const affectsOptions = productOptions.filter((o) => o.affects_price)
       for (const opt of affectsOptions) {
@@ -161,7 +169,6 @@ export default function NewTransactionPage() {
       }
     }
 
-    // 3순위: 거래처 등급 단가
     if (tierId) {
       const { data: tierPrice } = await supabase
         .from('product_prices')
@@ -177,7 +184,6 @@ export default function NewTransactionPage() {
       }
     }
 
-    // 4순위: 소비자가 (level 1)
     const { data: consumerTier } = await supabase
       .from('price_tiers')
       .select('id')
@@ -209,7 +215,6 @@ export default function NewTransactionPage() {
       return alert('거래처, 상품, 수량, 단가를 모두 입력해주세요.')
     }
 
-    // 필수 옵션 확인
     for (const opt of productOptions) {
       if (opt.is_required && !selectedOptions[opt.option_name]) {
         return alert(`"${opt.option_name}" 옵션을 선택해주세요.`)
@@ -220,7 +225,7 @@ export default function NewTransactionPage() {
 
     const optionsData = Object.keys(selectedOptions).length > 0 ? selectedOptions : null
 
-    const { error } = await supabase.from('transactions').insert({
+    const { data: saved, error } = await supabase.from('transactions').insert({
       customer_id: customerId,
       product_id: productId,
       order_date: orderDate,
@@ -231,14 +236,40 @@ export default function NewTransactionPage() {
       shipment_status: '대기',
       options: optionsData,
       note,
-    })
+    }).select('id').single()
 
     if (error) {
       alert('저장 실패: ' + error.message)
     } else {
-      router.push('/transactions')
+      const prodName = products.find(p => p.id === productId)?.name || ''
+      setSavedList(prev => [...prev, {
+        id: saved.id,
+        name: prodName,
+        quantity: parseInt(quantity),
+        unit_price: parseFloat(unitPrice),
+        total,
+      }])
+      setProductId('')
+      setProductSearch('')
+      setQuantity('')
+      setUnitPrice('')
+      setCostPrice('')
+      setNote('')
+      setProductOptions([])
+      setSelectedOptions({})
+      setPriceSource('')
     }
     setLoading(false)
+  }
+
+  const handleDeleteSaved = async (itemId: string) => {
+    if (!confirm('이 거래를 삭제하시겠습니까?')) return
+    const { error } = await supabase.from('transactions').delete().eq('id', itemId)
+    if (error) {
+      alert('삭제 실패: ' + error.message)
+    } else {
+      setSavedList(prev => prev.filter(i => i.id !== itemId))
+    }
   }
 
   return (
@@ -248,7 +279,6 @@ export default function NewTransactionPage() {
         <h1 className="text-2xl font-bold">새 거래 입력</h1>
       </div>
       <div className="space-y-4">
-        {/* 거래처 선택 */}
         <div>
           <label className="block text-sm font-medium text-gray-700">거래처 *</label>
           <select value={customerId} onChange={(e) => handleCustomerChange(e.target.value)}
@@ -258,17 +288,24 @@ export default function NewTransactionPage() {
           </select>
         </div>
 
-        {/* 상품 선택 */}
         <div>
           <label className="block text-sm font-medium text-gray-700">상품 *</label>
-          <select value={productId} onChange={(e) => handleProductChange(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+          <input
+            type="text"
+            placeholder="상품명 검색..."
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+          <select value={productId} onChange={(e) => { handleProductChange(e.target.value); setProductSearch('') }}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" size={productSearch ? 5 : 1}>
             <option value="">상품 선택</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {products
+              .filter((p) => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()))
+              .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
 
-        {/* 옵션 선택 */}
         {productOptions.length > 0 && (
           <div className="p-3 bg-gray-50 rounded-md space-y-3">
             <p className="text-sm font-medium text-gray-700">옵션 선택</p>
@@ -292,32 +329,28 @@ export default function NewTransactionPage() {
           </div>
         )}
 
-        {/* 주문일 */}
         <div>
           <label className="block text-sm font-medium text-gray-700">주문일 *</label>
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
 
-        {/* 수량 */}
         <div>
           <label className="block text-sm font-medium text-gray-700">수량 *</label>
-          <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)}
+          <input type="text" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9-]/g, ''))}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
 
-        {/* 단가 */}
         <div>
           <label className="block text-sm font-medium text-gray-700">단가 * (자동 적용)</label>
-          <input type="number" value={unitPrice}
-            onChange={(e) => { setUnitPrice(e.target.value); setPriceSource('수동 입력') }}
+          <input type="text" inputMode="numeric" value={formatPrice(unitPrice)}
+            onChange={(e) => { setUnitPrice(rawPrice(e.target.value)); setPriceSource('수동 입력') }}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
           {priceSource && (
             <p className="text-xs text-indigo-600 mt-1">적용: {priceSource}</p>
           )}
         </div>
 
-        {/* 합계 + 마진 */}
         <div className="p-3 bg-gray-50 rounded-md">
           <div className="flex justify-between">
             <span className="text-sm text-gray-600">합계</span>
@@ -336,7 +369,6 @@ export default function NewTransactionPage() {
           )}
         </div>
 
-        {/* 비고 */}
         <div>
           <label className="block text-sm font-medium text-gray-700">비고</label>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
@@ -347,6 +379,48 @@ export default function NewTransactionPage() {
           className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50">
           {loading ? '저장 중...' : '저장하기'}
         </button>
+
+        {savedList.length > 0 && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">입력한 거래 ({savedList.length}건)</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-1">상품</th>
+                  <th className="text-right py-1">수량</th>
+                  <th className="text-right py-1">단가</th>
+                  <th className="text-right py-1">합계</th>
+                  <th className="w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {savedList.map((item) => (
+                  <tr key={item.id} className="border-b border-gray-200">
+                    <td className="py-1">{item.name}</td>
+                    <td className="py-1 text-right">{item.quantity}</td>
+                    <td className="py-1 text-right">{item.unit_price.toLocaleString()}</td>
+                    <td className="py-1 text-right">{item.total.toLocaleString()}</td>
+                    <td className="py-1 text-right">
+                      <button onClick={() => handleDeleteSaved(item.id)}
+                        className="text-red-500 hover:text-red-700 text-xs">✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t font-bold">
+                  <td colSpan={3} className="py-1 text-right">합계</td>
+                  <td className="py-1 text-right">{savedList.reduce((s, i) => s + i.total, 0).toLocaleString()}원</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            <Link href="/invoices/new"
+              className="mt-3 block w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 text-center text-sm">
+              명세서 생성으로 이동 →
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   )
