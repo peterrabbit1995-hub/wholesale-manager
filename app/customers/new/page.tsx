@@ -57,7 +57,17 @@ export default function NewCustomerPage() {
     }
     setLoading(false)
   }
-
+const formatPhone = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    if (nums.startsWith('02')) {
+      if (nums.length <= 2) return nums
+      if (nums.length <= 6) return `${nums.slice(0, 2)}-${nums.slice(2)}`
+      return `${nums.slice(0, 2)}-${nums.slice(2, 6)}-${nums.slice(6, 10)}`
+    }
+    if (nums.length <= 3) return nums
+    if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`
+    return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 11)}`
+  }
   return (
     <div className="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
       <div className="flex items-center mb-6">
@@ -68,7 +78,7 @@ export default function NewCustomerPage() {
         {[
           { label: '상호명 *', value: name, setter: setName },
           { label: '대표자명', value: representative, setter: setRepresentative },
-          { label: '연락처', value: phone, setter: setPhone },
+          { label: '연락처', value: phone, setter: (v: string) => setPhone(formatPhone(v)) },
           { label: '이메일', value: email, setter: setEmail },
           { label: '사업자등록번호', value: businessNumber, setter: setBusinessNumber },
           { label: '주소', value: address, setter: setAddress },

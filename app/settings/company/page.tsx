@@ -10,6 +10,17 @@ export default function CompanySettingsPage() {
   const [businessNumber, setBusinessNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const formatPhone = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    if (nums.startsWith('02')) {
+      if (nums.length <= 2) return nums
+      if (nums.length <= 6) return `${nums.slice(0, 2)}-${nums.slice(2)}`
+      return `${nums.slice(0, 2)}-${nums.slice(2, 6)}-${nums.slice(6, 10)}`
+    }
+    if (nums.length <= 3) return nums
+    if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`
+    return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 11)}`
+  }
 
   useEffect(() => {
     loadCompanyInfo()
@@ -71,7 +82,7 @@ export default function CompanySettingsPage() {
           <input
             type="text"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(formatPhone(e.target.value))}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
           />
         </div>

@@ -18,6 +18,8 @@ export default function TransactionDetailPage() {
   const [orderDate, setOrderDate] = useState('')
   const [quantity, setQuantity] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
+  const [costPrice, setCostPrice] = useState('')
+  const [options, setOptions] = useState<Record<string, string> | null>(null)
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -37,6 +39,8 @@ export default function TransactionDetailPage() {
       setOrderDate(t.order_date || '')
       setQuantity(String(t.quantity || ''))
       setUnitPrice(String(t.unit_price || ''))
+      setCostPrice(String(t.cost_price || ''))
+      setOptions(t.options || null)
       setNote(t.note || '')
     }
     setCustomers(c || [])
@@ -53,6 +57,7 @@ export default function TransactionDetailPage() {
       order_date: orderDate,
       quantity: parseInt(quantity),
       unit_price: parseFloat(unitPrice),
+      cost_price: costPrice ? parseFloat(costPrice) : null,
       total,
       note,
     }).eq('id', id)
@@ -94,6 +99,17 @@ export default function TransactionDetailPage() {
             {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
+
+        {/* 저장된 옵션 표시 */}
+        {options && Object.keys(options).length > 0 && (
+          <div className="p-3 bg-gray-50 rounded-md">
+            <p className="text-sm font-medium text-gray-700 mb-1">선택된 옵션</p>
+            {Object.entries(options).map(([name, value]) => (
+              <p key={name} className="text-sm text-gray-600">{name}: {value}</p>
+            ))}
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-gray-700">주문일</label>
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
@@ -109,10 +125,26 @@ export default function TransactionDetailPage() {
           <input type="number" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
+
+        {/* 합계 + 마진 */}
         <div className="p-3 bg-gray-50 rounded-md">
-          <span className="text-sm text-gray-600">합계: </span>
-          <span className="font-bold text-lg">{total.toLocaleString()}원</span>
+          <div className="flex justify-between">
+            <span className="text-sm text-gray-600">합계</span>
+            <span className="font-bold text-lg">{total.toLocaleString()}원</span>
+          </div>
+          {costPrice && unitPrice && (
+            <div className="flex justify-between mt-1">
+              <span className="text-sm text-gray-400">마진</span>
+              <span className="text-sm text-gray-500">
+                {(parseFloat(unitPrice) - parseFloat(costPrice)).toLocaleString()}원
+                ({parseFloat(costPrice) > 0
+                  ? Math.round(((parseFloat(unitPrice) - parseFloat(costPrice)) / parseFloat(costPrice)) * 100)
+                  : 0}%)
+              </span>
+            </div>
+          )}
         </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700">비고</label>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)}

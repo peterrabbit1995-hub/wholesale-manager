@@ -124,6 +124,12 @@ export default function ProductDetailPage() {
         >
           {loading ? '저장 중...' : '저장하기'}
         </button>
+        <Link
+          href={`/products/${id}/options`}
+          className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
+        >
+          🔧 옵션 설정
+        </Link>
         <button
           onClick={handleDelete}
           className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600"

@@ -24,6 +24,18 @@ export default function CustomerDetailPage() {
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
   const [loading, setLoading] = useState(false)
 
+const formatPhone = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    if (nums.startsWith('02')) {
+      if (nums.length <= 2) return nums
+      if (nums.length <= 6) return `${nums.slice(0, 2)}-${nums.slice(2)}`
+      return `${nums.slice(0, 2)}-${nums.slice(2, 6)}-${nums.slice(6, 10)}`
+    }
+    if (nums.length <= 3) return nums
+    if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`
+    return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 11)}`
+  }
+
   useEffect(() => {
     loadData()
   }, [])
@@ -83,7 +95,7 @@ export default function CustomerDetailPage() {
         {[
           { label: '상호명 *', value: name, setter: setName },
           { label: '대표자명', value: representative, setter: setRepresentative },
-          { label: '연락처', value: phone, setter: setPhone },
+          { label: '연락처', value: phone, setter: (v: string) => setPhone(formatPhone(v)) },
           { label: '이메일', value: email, setter: setEmail },
           { label: '사업자등록번호', value: businessNumber, setter: setBusinessNumber },
           { label: '주소', value: address, setter: setAddress },
@@ -116,6 +128,12 @@ export default function CustomerDetailPage() {
           className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50">
           {loading ? '저장 중...' : '저장하기'}
         </button>
+        <Link
+          href={`/customers/${id}/prices`}
+          className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
+        >
+          💰 특별단가 설정
+        </Link>
         <button onClick={handleDelete}
           className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600">
           삭제
