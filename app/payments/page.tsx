@@ -9,7 +9,7 @@ type Payment = {
   payment_date: string
   amount: number
   note: string
-  customers: { name: string } | null
+  customers: { name: string } | { name: string }[] | null
 }
 
 export default function PaymentsPage() {

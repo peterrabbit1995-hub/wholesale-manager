@@ -10,8 +10,8 @@ type Transaction = {
   quantity: number
   unit_price: number
   total: number
-  customers: { name: string } | null
-  products: { name: string } | null
+  customers: { name: string } | { name: string }[] | null
+  products: { name: string } | { name: string }[] | null
 }
 
 export default function TransactionsPage() {

@@ -9,7 +9,7 @@ type CustomerPrice = {
   id: string
   product_id: string
   special_price: number
-  products: { name: string } | null
+  products: { name: string } | { name: string }[] | null
 }
 
 type Product = {
@@ -52,7 +52,7 @@ export default function CustomerPricesPage() {
     if (customer) {
       setCustomerName(customer.name)
       setTierId(customer.default_tier_id || '')
-      const tier = customer.price_tiers
+      const tier = customer.price_tiers as { name: string } | { name: string }[] | null
       if (tier) {
         setTierName(Array.isArray(tier) ? tier[0]?.name || '' : tier.name)
       }

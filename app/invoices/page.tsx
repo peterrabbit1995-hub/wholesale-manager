@@ -11,7 +11,7 @@ type Invoice = {
   period_end: string
   total_amount: number
   status: string
-  customers: { name: string } | null
+  customers: { name: string } | { name: string }[] | null
 }
 
 export default function InvoicesPage() {
