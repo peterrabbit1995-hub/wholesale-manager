@@ -17,6 +17,7 @@ type ProductOption = {
 
 type SavedItem = {
   id: string
+  date: string
   name: string
   quantity: number
   unit_price: number
@@ -244,6 +245,7 @@ export default function NewTransactionPage() {
       const prodName = products.find(p => p.id === productId)?.name || ''
       setSavedList(prev => [...prev, {
         id: saved.id,
+        date: orderDate,
         name: prodName,
         quantity: parseInt(quantity),
         unit_price: parseFloat(rawPrice(unitPrice)),
@@ -388,20 +390,22 @@ export default function NewTransactionPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
+                  <th className="text-left py-1 whitespace-nowrap">날짜</th>
                   <th className="text-left py-1">상품</th>
-                  <th className="text-right py-1">수량</th>
-                  <th className="text-right py-1">단가</th>
-                  <th className="text-right py-1">합계</th>
-                  <th className="w-10"></th>
+                  <th className="text-right py-1 whitespace-nowrap">수량</th>
+                  <th className="text-right py-1 whitespace-nowrap">단가</th>
+                  <th className="text-right py-1 whitespace-nowrap">합계</th>
+                  <th className="w-8"></th>
                 </tr>
               </thead>
               <tbody>
                 {savedList.map((item) => (
                   <tr key={item.id} className="border-b border-gray-200">
+                    <td className="py-1 text-gray-500 whitespace-nowrap">{item.date}</td>
                     <td className="py-1">{item.name}</td>
-                    <td className="py-1 text-right">{item.quantity}</td>
-                    <td className="py-1 text-right">{item.unit_price.toLocaleString()}</td>
-                    <td className="py-1 text-right">{item.total.toLocaleString()}</td>
+                    <td className="py-1 text-right whitespace-nowrap">{item.quantity}</td>
+                    <td className="py-1 text-right whitespace-nowrap">{item.unit_price.toLocaleString()}</td>
+                    <td className="py-1 text-right whitespace-nowrap">{item.total.toLocaleString()}</td>
                     <td className="py-1 text-right">
                       <button onClick={() => handleDeleteSaved(item.id)}
                         className="text-red-500 hover:text-red-700 text-xs">✕</button>
@@ -411,8 +415,8 @@ export default function NewTransactionPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t font-bold">
-                  <td colSpan={3} className="py-1 text-right">합계</td>
-                  <td className="py-1 text-right">{savedList.reduce((s, i) => s + i.total, 0).toLocaleString()}원</td>
+                  <td colSpan={4} className="py-1 text-right">합계</td>
+                  <td className="py-1 text-right whitespace-nowrap">{savedList.reduce((s, i) => s + i.total, 0).toLocaleString()}원</td>
                   <td></td>
                 </tr>
               </tfoot>
