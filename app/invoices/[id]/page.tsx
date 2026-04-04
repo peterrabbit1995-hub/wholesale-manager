@@ -38,6 +38,7 @@ type Transaction = {
   total: number
   note: string
   options: Record<string, string> | null
+  product_id: string
   products: { name: string } | { name: string }[] | null
 }
 
@@ -56,6 +57,7 @@ export default function InvoiceDetailPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [recentPayments, setRecentPayments] = useState<Payment[]>([])
   const [previousUnpaid, setPreviousUnpaid] = useState(0)
+  const [consumerPrices, setConsumerPrices] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -102,7 +104,7 @@ export default function InvoiceDetailPage() {
       supabase.from('customers').select('name, representative, phone, business_number').eq('id', inv.customer_id).single(),
       supabase.from('company_info').select('name, phone, bank_account, business_number').single(),
       supabase.from('transactions')
-        .select('id, order_date, quantity, unit_price, total, note, options, products(name)')
+        .select('id, order_date, quantity, unit_price, total, note, options, product_id, products(name)')
         .eq('invoice_id', id)
         .order('order_date'),
     ])
@@ -110,6 +112,32 @@ export default function InvoiceDetailPage() {
     setCustomer(cust || null)
     setCompany(comp || null)
     setTransactions(txs || [])
+
+    // 소비자가 조회 (price_tiers level=1)
+    if (txs && txs.length > 0) {
+      const { data: consumerTier } = await supabase
+        .from('price_tiers')
+        .select('id')
+        .eq('level', 1)
+        .single()
+
+      if (consumerTier) {
+        const productIds = [...new Set(txs.map((t: Transaction) => t.product_id))]
+        const { data: prices } = await supabase
+          .from('product_prices')
+          .select('product_id, price')
+          .eq('tier_id', consumerTier.id)
+          .in('product_id', productIds)
+
+        if (prices) {
+          const priceMap: Record<string, number> = {}
+          prices.forEach((p: { product_id: string; price: number }) => {
+            priceMap[p.product_id] = p.price
+          })
+          setConsumerPrices(priceMap)
+        }
+      }
+    }
 
     // 이전 미수금 계산
     const { data: prevInvoices } = await supabase
@@ -139,8 +167,11 @@ export default function InvoiceDetailPage() {
       ? Array.isArray(t.products) ? t.products[0]?.name || '-' : t.products.name
       : '-'
     if (t.options && Object.keys(t.options).length > 0) {
-      const optStr = Object.values(t.options).join(', ')
-      return `${name} (${optStr})`
+      // 빈 문자열 옵션값 제거
+      const validValues = Object.values(t.options).filter(v => v && v.trim() !== '')
+      if (validValues.length > 0) {
+        return `${name} (${validValues.join(', ')})`
+      }
     }
     return name
   }
@@ -271,26 +302,31 @@ export default function InvoiceDetailPage() {
               <th className="text-left px-3 py-2 font-medium">주문일</th>
               <th className="text-left px-3 py-2 font-medium">상품명</th>
               <th className="text-right px-3 py-2 font-medium">수량</th>
+              <th className="text-right px-3 py-2 font-medium">소비자가</th>
               <th className="text-right px-3 py-2 font-medium">단가</th>
               <th className="text-right px-3 py-2 font-medium">합계</th>
               <th className="text-left px-3 py-2 font-medium">비고</th>
             </tr>
           </thead>
           <tbody>
-            {transactions.map((t) => (
-              <tr key={t.id} className="border-b border-gray-200">
-                <td className="px-3 py-2">{t.order_date}</td>
-                <td className="px-3 py-2">{getProductName(t)}</td>
-                <td className="px-3 py-2 text-right">{t.quantity}</td>
-                <td className="px-3 py-2 text-right">{t.unit_price?.toLocaleString()}</td>
-                <td className="px-3 py-2 text-right">{t.total?.toLocaleString()}</td>
-                <td className="px-3 py-2 text-gray-500">{t.note || ''}</td>
-              </tr>
-            ))}
+            {transactions.map((t) => {
+              const cp = consumerPrices[t.product_id]
+              return (
+                <tr key={t.id} className="border-b border-gray-200">
+                  <td className="px-3 py-2">{t.order_date}</td>
+                  <td className="px-3 py-2">{getProductName(t)}</td>
+                  <td className="px-3 py-2 text-right">{t.quantity}</td>
+                  <td className="px-3 py-2 text-right text-gray-400">{cp ? cp.toLocaleString() : '-'}</td>
+                  <td className="px-3 py-2 text-right">{t.unit_price?.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right">{t.total?.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-gray-500">{t.note || ''}</td>
+                </tr>
+              )
+            })}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-gray-800">
-              <td colSpan={4} className="px-3 py-3 text-right font-bold">이번 거래 합계</td>
+              <td colSpan={5} className="px-3 py-3 text-right font-bold">이번 거래 합계</td>
               <td className="px-3 py-3 text-right font-bold text-lg">
                 {invoice.total_amount?.toLocaleString()}원
               </td>

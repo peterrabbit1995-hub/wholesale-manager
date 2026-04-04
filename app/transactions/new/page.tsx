@@ -224,7 +224,11 @@ export default function NewTransactionPage() {
 
     setLoading(true)
 
-    const optionsData = Object.keys(selectedOptions).length > 0 ? selectedOptions : null
+    // 빈 문자열 옵션값 제거 후 저장
+    const filteredOptions = Object.fromEntries(
+      Object.entries(selectedOptions).filter(([, v]) => v && v.trim() !== '')
+    )
+    const optionsData = Object.keys(filteredOptions).length > 0 ? filteredOptions : null
 
     const { data: saved, error } = await supabase.from('transactions').insert({
       customer_id: customerId,

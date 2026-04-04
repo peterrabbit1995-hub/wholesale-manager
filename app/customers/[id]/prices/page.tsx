@@ -36,6 +36,7 @@ export default function CustomerPricesPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [loading, setLoading] = useState(false)
+  const [productSearch, setProductSearch] = useState('')
 
   useEffect(() => {
     loadData()
@@ -121,6 +122,7 @@ export default function CustomerPricesPage() {
     } else {
       setSelectedProductId('')
       setSpecialPrice('')
+      setProductSearch('')
       await loadData()
     }
     setLoading(false)
@@ -178,13 +180,23 @@ export default function CustomerPricesPage() {
       <div className="mb-8 p-4 bg-white rounded-lg shadow-sm border">
         <h2 className="text-sm font-medium text-gray-700 mb-3">특별단가 추가</h2>
         <div className="space-y-3">
+          <input
+            type="text"
+            placeholder="상품명 검색..."
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
           <select
             value={selectedProductId}
-            onChange={(e) => setSelectedProductId(e.target.value)}
+            onChange={(e) => { setSelectedProductId(e.target.value); setProductSearch('') }}
             className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+            size={productSearch ? 5 : 1}
           >
             <option value="">상품 선택</option>
-            {availableProducts.map((p) => (
+            {availableProducts
+              .filter((p) => !productSearch || productSearch.toLowerCase().split(' ').every(word => p.name.toLowerCase().includes(word)))
+              .map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
