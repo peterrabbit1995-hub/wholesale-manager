@@ -38,7 +38,7 @@ type Transaction = {
   total: number
   note: string
   options: Record<string, string> | null
-  products: { name: string } | null
+  products: { name: string } | { name: string }[] | null
 }
 
 export default function InvoiceDetailPage() {
@@ -73,7 +73,7 @@ const handleDownloadPNG = async () => {
     link.href = dataUrl
     link.click()
   }
-  
+
   useEffect(() => {
     loadData()
   }, [])
