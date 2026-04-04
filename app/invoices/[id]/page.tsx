@@ -41,6 +41,12 @@ type Transaction = {
   products: { name: string } | { name: string }[] | null
 }
 
+type Payment = {
+  payment_date: string
+  amount: number
+  note: string
+}
+
 export default function InvoiceDetailPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -48,11 +54,12 @@ export default function InvoiceDetailPage() {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [recentPayments, setRecentPayments] = useState<Payment[]>([])
   const [previousUnpaid, setPreviousUnpaid] = useState(0)
   const [loading, setLoading] = useState(true)
   const printRef = useRef<HTMLDivElement>(null)
 
-const handleDownloadPNG = async () => {
+  const handleDownloadPNG = async () => {
     if (!printRef.current) return
     const { toPng } = await import('html-to-image')
     const el = printRef.current
@@ -104,7 +111,7 @@ const handleDownloadPNG = async () => {
     setCompany(comp || null)
     setTransactions(txs || [])
 
-    // 이전 미수금 계산: 이전 명세서 총액 - 총 입금액
+    // 이전 미수금 계산
     const { data: prevInvoices } = await supabase
       .from('invoices')
       .select('total_amount')
@@ -116,12 +123,14 @@ const handleDownloadPNG = async () => {
 
     const { data: payments } = await supabase
       .from('payments')
-      .select('amount')
+      .select('payment_date, amount, note')
       .eq('customer_id', inv.customer_id)
+      .order('payment_date', { ascending: false })
 
     const totalPayments = (payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
 
     setPreviousUnpaid(prevInvoiceTotal - totalPayments)
+    setRecentPayments((payments || []).slice(0, 10))
     setLoading(false)
   }
 
@@ -289,6 +298,24 @@ const handleDownloadPNG = async () => {
             </tr>
           </tfoot>
         </table>
+
+        {/* 최근 입금 내역 */}
+        {recentPayments.length > 0 && (
+          <div className="mt-6 border-t border-gray-300 pt-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">최근 입금 내역</p>
+            <table className="w-full text-sm">
+              <tbody>
+                {recentPayments.map((p, i) => (
+                  <tr key={i} className="border-b border-gray-100">
+                    <td className="px-3 py-1 text-gray-600">{p.payment_date}</td>
+                    <td className="px-3 py-1 text-right text-green-600">+{p.amount?.toLocaleString()}원</td>
+                    <td className="px-3 py-1 text-gray-400">{p.note || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* 미수금 요약 */}
         <div className="mt-6 border-t-2 border-gray-800 pt-4">
