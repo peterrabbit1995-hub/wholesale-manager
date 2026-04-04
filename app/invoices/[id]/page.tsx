@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -50,7 +50,30 @@ export default function InvoiceDetailPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [previousUnpaid, setPreviousUnpaid] = useState(0)
   const [loading, setLoading] = useState(true)
+  const printRef = useRef<HTMLDivElement>(null)
 
+const handleDownloadPNG = async () => {
+    if (!printRef.current) return
+    const { toPng } = await import('html-to-image')
+    const el = printRef.current
+    const originalStyle = el.style.cssText
+    el.style.width = '800px'
+    el.style.maxWidth = '800px'
+    el.style.margin = '0'
+    el.style.padding = '32px'
+    const dataUrl = await toPng(el, {
+      quality: 1.0,
+      pixelRatio: 2,
+      backgroundColor: '#ffffff',
+      width: 800,
+    })
+    el.style.cssText = originalStyle
+    const link = document.createElement('a')
+    link.download = `명세서_${customer?.name || ''}_${invoice?.period_start}_${invoice?.period_end}.png`
+    link.href = dataUrl
+    link.click()
+  }
+  
   useEffect(() => {
     loadData()
   }, [])
@@ -164,7 +187,13 @@ export default function InvoiceDetailPage() {
             onClick={() => window.print()}
             className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm"
           >
-            PDF 다운로드 / 인쇄
+            PDF / 인쇄
+          </button>
+          <button
+            onClick={handleDownloadPNG}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+          >
+            PNG 이미지
           </button>
           <button
             onClick={handleDelete}
@@ -175,7 +204,7 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
-      <div className="print-area max-w-3xl mx-auto mt-4 mb-10 p-8 bg-white rounded-lg shadow-sm border">
+      <div ref={printRef} className="print-area max-w-3xl mx-auto mt-4 mb-10 p-8 bg-white rounded-lg shadow-sm border">
         <h1 className="text-2xl font-bold text-center mb-8">거 래 명 세 서</h1>
 
         <div className="flex justify-between mb-8">
