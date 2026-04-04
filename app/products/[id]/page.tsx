@@ -19,6 +19,13 @@ export default function ProductDetailPage() {
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
   const [loading, setLoading] = useState(false)
 
+  const formatPrice = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    return nums ? Number(nums).toLocaleString() : ''
+  }
+
+  const rawPrice = (value: string) => value.replace(/,/g, '')
+
   useEffect(() => {
     loadData()
   }, [])
@@ -36,7 +43,7 @@ export default function ProductDetailPage() {
 
     const priceMap: Record<string, string> = {}
     productPrices?.forEach((p) => {
-      priceMap[p.tier_id] = String(p.price)
+      priceMap[p.tier_id] = Number(p.price).toLocaleString()
     })
     setPrices(priceMap)
   }
@@ -47,7 +54,7 @@ export default function ProductDetailPage() {
     await supabase.from('products').update({ name }).eq('id', id)
 
     for (const tier of priceTiers) {
-      const price = prices[tier.id]
+      const price = (prices[tier.id] || '').replace(/,/g, '')
       const { data: existing } = await supabase
         .from('product_prices')
         .select('id')
@@ -107,10 +114,19 @@ export default function ProductDetailPage() {
               <div key={t.id} className="flex items-center gap-3">
                 <span className="w-24 text-sm text-gray-600">{t.name}</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="0"
                   value={prices[t.id] || ''}
-                  onChange={(e) => setPrices({ ...prices, [t.id]: e.target.value })}
+                  onChange={(e) => setPrices(prev => ({ ...prev, [t.id]: rawPrice(e.target.value) }))}
+                  onBlur={(e) => {
+                    const v = rawPrice(e.target.value)
+                    if (v) setPrices(prev => ({ ...prev, [t.id]: formatPrice(v) }))
+                  }}
+                  onFocus={(e) => {
+                    const v = rawPrice(e.target.value)
+                    if (v) setPrices(prev => ({ ...prev, [t.id]: v }))
+                  }}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>

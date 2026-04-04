@@ -208,7 +208,7 @@ export default function NewTransactionPage() {
     setPriceSource('가격 미설정')
   }
 
-  const total = parseFloat(quantity || '0') * parseFloat(unitPrice || '0')
+  const total = parseFloat(quantity || '0') * parseFloat(rawPrice(unitPrice) || '0')
 
   const handleSave = async () => {
     if (!customerId || !productId || !quantity || !unitPrice) {
@@ -230,8 +230,8 @@ export default function NewTransactionPage() {
       product_id: productId,
       order_date: orderDate,
       quantity: parseInt(quantity),
-      unit_price: parseFloat(unitPrice),
-      cost_price: costPrice ? parseFloat(costPrice) : null,
+      unit_price: parseFloat(rawPrice(unitPrice)),
+      cost_price: costPrice ? parseFloat(rawPrice(costPrice)) : null,
       total,
       shipment_status: '대기',
       options: optionsData,
@@ -246,7 +246,7 @@ export default function NewTransactionPage() {
         id: saved.id,
         name: prodName,
         quantity: parseInt(quantity),
-        unit_price: parseFloat(unitPrice),
+        unit_price: parseFloat(rawPrice(unitPrice)),
         total,
       }])
       setProductId('')
@@ -301,7 +301,7 @@ export default function NewTransactionPage() {
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" size={productSearch ? 5 : 1}>
             <option value="">상품 선택</option>
             {products
-              .filter((p) => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()))
+              .filter((p) => !productSearch || productSearch.toLowerCase().split(' ').every(word => p.name.toLowerCase().includes(word)))
               .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -343,8 +343,10 @@ export default function NewTransactionPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700">단가 * (자동 적용)</label>
-          <input type="text" inputMode="numeric" value={formatPrice(unitPrice)}
+          <input type="text" inputMode="numeric" value={unitPrice}
             onChange={(e) => { setUnitPrice(rawPrice(e.target.value)); setPriceSource('수동 입력') }}
+            onBlur={() => { if (unitPrice) setUnitPrice(formatPrice(unitPrice)) }}
+            onFocus={() => { if (unitPrice) setUnitPrice(rawPrice(unitPrice)) }}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
           {priceSource && (
             <p className="text-xs text-indigo-600 mt-1">적용: {priceSource}</p>
@@ -360,9 +362,9 @@ export default function NewTransactionPage() {
             <div className="flex justify-between mt-1">
               <span className="text-sm text-gray-400">마진</span>
               <span className="text-sm text-gray-500">
-                {(parseFloat(unitPrice) - parseFloat(costPrice)).toLocaleString()}원
-                ({parseFloat(costPrice) > 0
-                  ? Math.round(((parseFloat(unitPrice) - parseFloat(costPrice)) / parseFloat(costPrice)) * 100)
+                {(parseFloat(rawPrice(unitPrice)) - parseFloat(rawPrice(costPrice))).toLocaleString()}원
+                ({parseFloat(rawPrice(costPrice)) > 0
+                  ? Math.round(((parseFloat(rawPrice(unitPrice)) - parseFloat(rawPrice(costPrice))) / parseFloat(rawPrice(costPrice))) * 100)
                   : 0}%)
               </span>
             </div>

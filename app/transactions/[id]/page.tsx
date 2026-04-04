@@ -23,6 +23,13 @@ export default function TransactionDetailPage() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const formatPrice = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    return nums ? Number(nums).toLocaleString() : ''
+  }
+
+  const rawPrice = (value: string) => value.replace(/,/g, '')
+
   useEffect(() => {
     loadData()
   }, [])
@@ -38,8 +45,8 @@ export default function TransactionDetailPage() {
       setProductId(t.product_id || '')
       setOrderDate(t.order_date || '')
       setQuantity(String(t.quantity || ''))
-      setUnitPrice(String(t.unit_price || ''))
-      setCostPrice(String(t.cost_price || ''))
+      setUnitPrice(t.unit_price ? Number(t.unit_price).toLocaleString() : '')
+      setCostPrice(t.cost_price ? String(t.cost_price) : '')
       setOptions(t.options || null)
       setNote(t.note || '')
     }
@@ -47,7 +54,7 @@ export default function TransactionDetailPage() {
     setProducts(p || [])
   }
 
-  const total = parseFloat(quantity || '0') * parseFloat(unitPrice || '0')
+  const total = parseFloat(quantity || '0') * parseFloat(rawPrice(unitPrice) || '0')
 
   const handleSave = async () => {
     setLoading(true)
@@ -56,8 +63,8 @@ export default function TransactionDetailPage() {
       product_id: productId,
       order_date: orderDate,
       quantity: parseInt(quantity),
-      unit_price: parseFloat(unitPrice),
-      cost_price: costPrice ? parseFloat(costPrice) : null,
+      unit_price: parseFloat(rawPrice(unitPrice)),
+      cost_price: costPrice ? parseFloat(rawPrice(costPrice)) : null,
       total,
       note,
     }).eq('id', id)
@@ -100,7 +107,6 @@ export default function TransactionDetailPage() {
           </select>
         </div>
 
-        {/* 저장된 옵션 표시 */}
         {options && Object.keys(options).length > 0 && (
           <div className="p-3 bg-gray-50 rounded-md">
             <p className="text-sm font-medium text-gray-700 mb-1">선택된 옵션</p>
@@ -117,16 +123,19 @@ export default function TransactionDetailPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">수량</label>
-          <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)}
+          <input type="text" inputMode="numeric" value={quantity}
+            onChange={(e) => setQuantity(e.target.value.replace(/[^0-9-]/g, ''))}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">단가</label>
-          <input type="number" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)}
+          <input type="text" inputMode="numeric" value={unitPrice}
+            onChange={(e) => setUnitPrice(rawPrice(e.target.value))}
+            onBlur={() => { if (unitPrice) setUnitPrice(formatPrice(unitPrice)) }}
+            onFocus={() => { if (unitPrice) setUnitPrice(rawPrice(unitPrice)) }}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
 
-        {/* 합계 + 마진 */}
         <div className="p-3 bg-gray-50 rounded-md">
           <div className="flex justify-between">
             <span className="text-sm text-gray-600">합계</span>
@@ -136,9 +145,9 @@ export default function TransactionDetailPage() {
             <div className="flex justify-between mt-1">
               <span className="text-sm text-gray-400">마진</span>
               <span className="text-sm text-gray-500">
-                {(parseFloat(unitPrice) - parseFloat(costPrice)).toLocaleString()}원
-                ({parseFloat(costPrice) > 0
-                  ? Math.round(((parseFloat(unitPrice) - parseFloat(costPrice)) / parseFloat(costPrice)) * 100)
+                {(parseFloat(rawPrice(unitPrice)) - parseFloat(rawPrice(costPrice))).toLocaleString()}원
+                ({parseFloat(rawPrice(costPrice)) > 0
+                  ? Math.round(((parseFloat(rawPrice(unitPrice)) - parseFloat(rawPrice(costPrice))) / parseFloat(rawPrice(costPrice))) * 100)
                   : 0}%)
               </span>
             </div>

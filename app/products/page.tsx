@@ -27,7 +27,7 @@ export default function ProductsPage() {
     setLoading(false)
   }
 
-  const filtered = products.filter((p) => p.name.includes(search))
+    const filtered = products.filter((p) => !search || search.toLowerCase().split(' ').every(word => p.name.toLowerCase().includes(word)))
 
   return (
     <div className="max-w-2xl mx-auto mt-10 p-6">
