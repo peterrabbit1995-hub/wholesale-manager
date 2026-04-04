@@ -14,6 +14,8 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
+  const [tierCount, setTierCount] = useState(0)
+  const [priceCountMap, setPriceCountMap] = useState<Record<string, number>>({})
   const perPage = 10
 
   useEffect(() => {
@@ -21,11 +23,20 @@ export default function ProductsPage() {
   }, [])
 
   const loadProducts = async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('id, name')
-      .order('name')
-    setProducts(data || [])
+    const [{ data: productsData }, { data: tiers }, { data: prices }] = await Promise.all([
+      supabase.from('products').select('id, name').order('name'),
+      supabase.from('price_tiers').select('id'),
+      supabase.from('product_prices').select('product_id, tier_id'),
+    ])
+
+    setProducts(productsData || [])
+    setTierCount(tiers?.length || 0)
+
+    const countMap: Record<string, number> = {}
+    for (const p of prices || []) {
+      countMap[p.product_id] = (countMap[p.product_id] || 0) + 1
+    }
+    setPriceCountMap(countMap)
     setLoading(false)
   }
 
@@ -36,7 +47,6 @@ export default function ProductsPage() {
   const totalPages = Math.ceil(filtered.length / perPage)
   const paged = filtered.slice((page - 1) * perPage, page * perPage)
 
-  // 검색하면 1페이지로 초기화
   const handleSearch = (value: string) => {
     setSearch(value)
     setPage(1)
@@ -68,15 +78,24 @@ export default function ProductsPage() {
         <>
           <p className="text-sm text-gray-400 mb-2">총 {filtered.length}개</p>
           <div className="space-y-2">
-            {paged.map((p) => (
-              <Link
-                key={p.id}
-                href={`/products/${p.id}`}
-                className="block p-4 bg-white rounded-lg shadow-sm hover:bg-gray-50 border"
-              >
-                <span className="font-medium">{p.name}</span>
-              </Link>
-            ))}
+            {paged.map((p) => {
+              const set = priceCountMap[p.id] || 0
+              const complete = tierCount > 0 && set >= tierCount
+              return (
+                <Link
+                  key={p.id}
+                  href={`/products/${p.id}`}
+                  className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm hover:bg-gray-50 border"
+                >
+                  <span className="font-medium">{p.name}</span>
+                  <span
+                    className={`text-sm font-medium ${complete ? 'text-green-600' : 'text-gray-400'}`}
+                  >
+                    {set}/{tierCount}
+                  </span>
+                </Link>
+              )
+            })}
           </div>
 
           {totalPages > 1 && (
