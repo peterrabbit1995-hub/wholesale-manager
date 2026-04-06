@@ -39,6 +39,8 @@ export default function OrderParsePage() {
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([])
   const [savedItems, setSavedItems] = useState<SavedItem[]>([])
   const [productSearches, setProductSearches] = useState<Record<number, string>>({})
+  const [aliasChecks, setAliasChecks] = useState<Record<number, boolean>>({})
+  const [aliasTexts, setAliasTexts] = useState<Record<number, string>>({})
 
   useEffect(() => {
     loadData()
@@ -61,6 +63,20 @@ export default function OrderParsePage() {
 
     const product = products.find(p => p.id === productId)
     if (!product) return
+
+    // 별칭 저장 체크되어 있으면 product_aliases에 저장
+    if (aliasChecks[index]) {
+      const aliasText = (aliasTexts[index] || parsedItems[index]?.product_name || '').trim()
+      if (aliasText) {
+        const optionSnapshot = parsedItems[index]?.options || null
+        await supabase.from('product_aliases').upsert(
+          { product_id: productId, alias: aliasText, option_snapshot: optionSnapshot },
+          { onConflict: 'alias' }
+        )
+      }
+      setAliasChecks(prev => ({ ...prev, [index]: false }))
+      setAliasTexts(prev => ({ ...prev, [index]: '' }))
+    }
 
     const { unitPrice, costPrice, source } = await lookupPrice(productId, customerId, null)
     setParsedItems(prev => prev.map((item, i) =>
@@ -421,7 +437,30 @@ export default function OrderParsePage() {
                                 <option disabled>──────────</option>
                                 <option value="__new__">+ 신규 상품 등록</option>
                               </select>
-                              {/* 신규 상품 등록 선택 시 링크로 이동 */}
+                              {/* 별칭 저장 옵션 */}
+                              <label className="mt-2 flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={aliasChecks[idx] || false}
+                                  onChange={(e) => {
+                                    setAliasChecks(prev => ({ ...prev, [idx]: e.target.checked }))
+                                    if (e.target.checked && !aliasTexts[idx]) {
+                                      setAliasTexts(prev => ({ ...prev, [idx]: item.product_name }))
+                                    }
+                                  }}
+                                  className="rounded border-gray-300"
+                                />
+                                이 별칭을 저장
+                              </label>
+                              {aliasChecks[idx] && (
+                                <input
+                                  type="text"
+                                  value={aliasTexts[idx] ?? item.product_name}
+                                  onChange={(e) => setAliasTexts(prev => ({ ...prev, [idx]: e.target.value }))}
+                                  placeholder="저장할 별칭"
+                                  className="mt-1 block w-full px-2 py-1 text-sm border border-indigo-300 rounded bg-indigo-50"
+                                />
+                              )}
                             </div>
                           ) : (
                             item.price_source && (
