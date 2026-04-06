@@ -46,6 +46,12 @@ export default function ProductOptionsPage() {
 
   const [loading, setLoading] = useState(false)
 
+  const formatPrice = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    return nums ? Number(nums).toLocaleString() : ''
+  }
+  const rawPrice = (value: string) => value.replace(/,/g, '')
+
   useEffect(() => {
     loadData()
   }, [])
@@ -90,6 +96,20 @@ export default function ProductOptionsPage() {
       await loadData()
     }
     setLoading(false)
+  }
+
+  // 옵션 설정 수정 (필수여부, 가격영향)
+  const handleUpdateOption = async (opt: ProductOption, field: 'is_required' | 'affects_price', value: boolean) => {
+    const { error } = await supabase
+      .from('product_options')
+      .update({ [field]: value })
+      .eq('id', opt.id)
+
+    if (error) {
+      alert('수정 실패: ' + error.message)
+    } else {
+      setOptions(prev => prev.map(o => o.id === opt.id ? { ...o, [field]: value } : o))
+    }
   }
 
   // 옵션 삭제
@@ -153,13 +173,14 @@ export default function ProductOptionsPage() {
 
     Object.entries(priceMatrix).forEach(([optionValue, tierPrices]) => {
       Object.entries(tierPrices).forEach(([tierId, price]) => {
-        if (price && parseFloat(price) > 0) {
+        const cleanPrice = rawPrice(price)
+        if (cleanPrice && parseFloat(cleanPrice) > 0) {
           rows.push({
             product_id: id as string,
             option_name: editingOptionName,
             option_value: optionValue,
             tier_id: tierId,
-            price: parseFloat(price),
+            price: parseFloat(cleanPrice),
           })
         }
       })
@@ -257,16 +278,28 @@ export default function ProductOptionsPage() {
             <div key={opt.id} className="p-4 bg-white rounded-lg shadow-sm border">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="font-medium">
-                    {opt.option_name}
-                    {opt.is_required && (
-                      <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">필수</span>
-                    )}
-                    {opt.affects_price && (
-                      <span className="ml-2 text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded">가격영향</span>
-                    )}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">{opt.option_values}</p>
+                  <p className="font-medium">{opt.option_name}</p>
+                  <p className="text-sm text-gray-400 mt-1 bg-gray-50 px-2 py-1 rounded">{opt.option_values}</p>
+                  <div className="flex gap-4 mt-2">
+                    <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={opt.is_required}
+                        onChange={(e) => handleUpdateOption(opt, 'is_required', e.target.checked)}
+                        className="rounded"
+                      />
+                      필수
+                    </label>
+                    <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={opt.affects_price}
+                        onChange={(e) => handleUpdateOption(opt, 'affects_price', e.target.checked)}
+                        className="rounded"
+                      />
+                      가격영향
+                    </label>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   {opt.affects_price && (
@@ -309,12 +342,29 @@ export default function ProductOptionsPage() {
                             {priceTiers.map((t) => (
                               <td key={t.id} className="px-1 py-1">
                                 <input
-                                  type="number"
+                                  type="text"
+                                  inputMode="numeric"
                                   value={tierPrices[t.id] || ''}
                                   onChange={(e) => {
                                     const updated = { ...priceMatrix }
-                                    updated[optVal] = { ...updated[optVal], [t.id]: e.target.value }
+                                    updated[optVal] = { ...updated[optVal], [t.id]: rawPrice(e.target.value) }
                                     setPriceMatrix(updated)
+                                  }}
+                                  onBlur={(e) => {
+                                    const v = rawPrice(e.target.value)
+                                    if (v) {
+                                      const updated = { ...priceMatrix }
+                                      updated[optVal] = { ...updated[optVal], [t.id]: formatPrice(v) }
+                                      setPriceMatrix(updated)
+                                    }
+                                  }}
+                                  onFocus={(e) => {
+                                    const v = rawPrice(e.target.value)
+                                    if (v) {
+                                      const updated = { ...priceMatrix }
+                                      updated[optVal] = { ...updated[optVal], [t.id]: v }
+                                      setPriceMatrix(updated)
+                                    }
                                   }}
                                   className="w-20 px-2 py-1 border border-gray-300 rounded text-right text-sm"
                                   placeholder="0"

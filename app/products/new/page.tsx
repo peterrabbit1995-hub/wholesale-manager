@@ -58,7 +58,7 @@ export default function NewProductPage() {
       await supabase.from('product_prices').insert(priceRows)
     }
 
-    router.push('/products')
+    router.push(`/products/${product.id}`)
     setLoading(false)
   }
 

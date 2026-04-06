@@ -17,6 +17,7 @@ type ParsedItem = {
   looked_up_price: number | null
   cost_price: number | null
   price_source: string
+  _priceDisplay?: string
 }
 
 type SavedItem = {
@@ -484,10 +485,20 @@ export default function OrderParsePage() {
                         <td className="py-2 px-2 text-right">
                           <input
                             type="text"
-                            value={price ? price.toLocaleString() : ''}
+                            inputMode="numeric"
+                            value={item._priceDisplay ?? (price ? price.toLocaleString() : '')}
                             onChange={(e) => {
-                              const raw = parseInt(e.target.value.replace(/[^0-9-]/g, '')) || 0
-                              updateItem(idx, 'looked_up_price', raw)
+                              const raw = e.target.value.replace(/[^0-9-]/g, '')
+                              updateItem(idx, '_priceDisplay', raw)
+                              updateItem(idx, 'looked_up_price', parseInt(raw) || 0)
+                            }}
+                            onBlur={() => {
+                              const v = item.looked_up_price || item.unit_price || 0
+                              updateItem(idx, '_priceDisplay', v ? v.toLocaleString() : '')
+                            }}
+                            onFocus={() => {
+                              const v = item.looked_up_price || item.unit_price || 0
+                              updateItem(idx, '_priceDisplay', v ? String(v) : '')
                             }}
                             className="w-24 text-right px-1 py-0.5 border border-gray-300 rounded"
                           />

@@ -38,6 +38,12 @@ export default function CustomerPricesPage() {
   const [loading, setLoading] = useState(false)
   const [productSearch, setProductSearch] = useState('')
 
+  const formatPrice = (value: string) => {
+    const nums = value.replace(/[^0-9]/g, '')
+    return nums ? Number(nums).toLocaleString() : ''
+  }
+  const rawPrice = (value: string) => value.replace(/,/g, '')
+
   useEffect(() => {
     loadData()
   }, [])
@@ -114,7 +120,7 @@ export default function CustomerPricesPage() {
     const { error } = await supabase.from('customer_prices').insert({
       customer_id: id,
       product_id: selectedProductId,
-      special_price: parseFloat(specialPrice),
+      special_price: parseFloat(rawPrice(specialPrice)),
     })
 
     if (error) {
@@ -135,7 +141,7 @@ export default function CustomerPricesPage() {
 
     const { error } = await supabase
       .from('customer_prices')
-      .update({ special_price: parseFloat(editPrice) })
+      .update({ special_price: parseFloat(rawPrice(editPrice)) })
       .eq('id', cpId)
 
     if (error) {
@@ -206,10 +212,13 @@ export default function CustomerPricesPage() {
             </p>
           )}
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             placeholder="특별단가 입력"
             value={specialPrice}
-            onChange={(e) => setSpecialPrice(e.target.value)}
+            onChange={(e) => setSpecialPrice(rawPrice(e.target.value))}
+            onBlur={() => { if (specialPrice) setSpecialPrice(formatPrice(specialPrice)) }}
+            onFocus={() => { if (specialPrice) setSpecialPrice(rawPrice(specialPrice)) }}
             className="block w-full px-3 py-2 border border-gray-300 rounded-md"
           />
           <button
@@ -240,9 +249,12 @@ export default function CustomerPricesPage() {
                 {editingId === cp.id ? (
                   <div className="flex items-center gap-2">
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       value={editPrice}
-                      onChange={(e) => setEditPrice(e.target.value)}
+                      onChange={(e) => setEditPrice(rawPrice(e.target.value))}
+                      onBlur={() => { if (editPrice) setEditPrice(formatPrice(editPrice)) }}
+                      onFocus={() => { if (editPrice) setEditPrice(rawPrice(editPrice)) }}
                       className="w-24 px-2 py-1 border border-gray-300 rounded-md text-right"
                     />
                     <button
@@ -262,7 +274,7 @@ export default function CustomerPricesPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-lg">{cp.special_price.toLocaleString()}원</span>
                     <button
-                      onClick={() => { setEditingId(cp.id); setEditPrice(String(cp.special_price)) }}
+                      onClick={() => { setEditingId(cp.id); setEditPrice(Number(cp.special_price).toLocaleString()) }}
                       className="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-md hover:bg-gray-200"
                     >
                       수정
