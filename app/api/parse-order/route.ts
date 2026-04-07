@@ -22,6 +22,15 @@ function createSupabaseServer(cookieStore: Awaited<ReturnType<typeof cookies>>) 
 }
 
 export async function POST(request: Request) {
+  const cookieStore = await cookies()
+  const supabase = createSupabaseServer(cookieStore)
+
+  // 인증 확인: 로그인하지 않은 사용자는 차단
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return Response.json({ error: '로그인이 필요합니다.' }, { status: 401 })
+  }
+
   const { message, customerId } = await request.json()
 
   if (!message || !customerId) {
@@ -31,9 +40,6 @@ export async function POST(request: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'ANTHROPIC_API_KEY가 설정되지 않았습니다.' }, { status: 500 })
   }
-
-  const cookieStore = await cookies()
-  const supabase = createSupabaseServer(cookieStore)
 
   // 상품 목록 조회
   const { data: products } = await supabase
@@ -119,6 +125,10 @@ ${aliasListText}
       system: systemPrompt,
       messages: [{ role: 'user', content: message }],
     })
+
+    if (!response.content || response.content.length === 0) {
+      return Response.json({ error: 'AI가 빈 응답을 반환했습니다.' }, { status: 500 })
+    }
 
     const text = response.content[0].type === 'text' ? response.content[0].text : ''
 

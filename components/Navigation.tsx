@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -22,6 +22,11 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // 페이지 이동 시 모바일 메뉴 자동 닫기
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [pathname])
 
   // 로그인 페이지에서는 네비게이션 숨김
   if (pathname === '/login') return null

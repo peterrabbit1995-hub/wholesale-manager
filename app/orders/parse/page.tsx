@@ -43,8 +43,47 @@ export default function OrderParsePage() {
   const [aliasChecks, setAliasChecks] = useState<Record<number, boolean>>({})
   const [aliasTexts, setAliasTexts] = useState<Record<number, string>>({})
 
+  // 임시 저장: parsedItems가 바뀔 때마다 DB에 자동 저장
+  const saveDraft = async (items: ParsedItem[], cid: string) => {
+    if (items.length === 0) {
+      await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
+      return
+    }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('draft_data').upsert({
+      user_id: user.id,
+      page_key: 'orders/parse',
+      customer_id: cid || null,
+      data: { parsedItems: items, orderDate },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,page_key' })
+  }
+
+  // 임시 저장 데이터 복원
+  const loadDraft = async () => {
+    const { data: draft } = await supabase
+      .from('draft_data')
+      .select('*')
+      .eq('page_key', 'orders/parse')
+      .single()
+
+    if (draft && draft.data?.parsedItems?.length > 0) {
+      const restored = confirm(
+        `이전에 작업하던 파싱 결과(${draft.data.parsedItems.length}건)가 있습니다.\n복원하시겠습니까?`
+      )
+      if (restored) {
+        setParsedItems(draft.data.parsedItems)
+        if (draft.customer_id) setCustomerId(draft.customer_id)
+        if (draft.data.orderDate) setOrderDate(draft.data.orderDate)
+      } else {
+        await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
+      }
+    }
+  }
+
   useEffect(() => {
-    loadData()
+    loadData().then(() => loadDraft())
   }, [])
 
   const loadData = async () => {
@@ -80,16 +119,20 @@ export default function OrderParsePage() {
     }
 
     const { unitPrice, costPrice, source } = await lookupPrice(productId, customerId, null)
-    setParsedItems(prev => prev.map((item, i) =>
-      i === index ? {
-        ...item,
-        product_id: productId,
-        product_name: product.name,
-        looked_up_price: unitPrice,
-        cost_price: costPrice,
-        price_source: source,
-      } : item
-    ))
+    setParsedItems(prev => {
+      const updated = prev.map((item, i) =>
+        i === index ? {
+          ...item,
+          product_id: productId,
+          product_name: product.name,
+          looked_up_price: unitPrice,
+          cost_price: costPrice,
+          price_source: source,
+        } : item
+      )
+      saveDraft(updated, customerId)
+      return updated
+    })
     setProductSearches(prev => ({ ...prev, [index]: '' }))
   }
 
@@ -246,6 +289,8 @@ export default function OrderParsePage() {
       )
 
       setParsedItems(itemsWithPrices)
+      // 파싱 결과 임시 저장
+      await saveDraft(itemsWithPrices, customerId)
     } catch {
       setError('요청 실패. 네트워크를 확인해주세요.')
     }
@@ -253,13 +298,21 @@ export default function OrderParsePage() {
   }
 
   const updateItem = (index: number, field: keyof ParsedItem, value: unknown) => {
-    setParsedItems(prev => prev.map((item, i) =>
-      i === index ? { ...item, [field]: value } : item
-    ))
+    setParsedItems(prev => {
+      const updated = prev.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+      saveDraft(updated, customerId)
+      return updated
+    })
   }
 
   const removeItem = (index: number) => {
-    setParsedItems(prev => prev.filter((_, i) => i !== index))
+    setParsedItems(prev => {
+      const updated = prev.filter((_, i) => i !== index)
+      saveDraft(updated, customerId)
+      return updated
+    })
   }
 
   const handleSaveAll = async () => {
@@ -321,6 +374,8 @@ export default function OrderParsePage() {
     setSavedItems(prev => [...prev, ...newSaved])
     setParsedItems([])
     setMessage('')
+    // 일괄 저장 완료 → 임시 데이터 삭제
+    await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
     setSaving(false)
   }
 

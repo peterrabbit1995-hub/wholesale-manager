@@ -22,6 +22,9 @@ export default function TransactionDetailPage() {
   const [options, setOptions] = useState<Record<string, string> | null>(null)
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
+  const [invoiceId, setInvoiceId] = useState<string | null>(null)
+
+  const isLocked = invoiceId !== null
 
   const formatPrice = (value: string) => {
     const nums = value.replace(/[^0-9]/g, '')
@@ -49,6 +52,7 @@ export default function TransactionDetailPage() {
       setCostPrice(t.cost_price ? String(t.cost_price) : '')
       setOptions(t.options || null)
       setNote(t.note || '')
+      setInvoiceId(t.invoice_id || null)
     }
     setCustomers(c || [])
     setProducts(p || [])
@@ -90,10 +94,25 @@ export default function TransactionDetailPage() {
         <h1 className="text-2xl font-bold">거래 수정</h1>
       </div>
       <div className="space-y-4">
+        {isLocked && (
+          <div className="p-4 bg-amber-50 border border-amber-300 rounded-md">
+            <p className="text-amber-800 font-medium">명세서에 포함된 거래입니다</p>
+            <p className="text-amber-600 text-sm mt-1">
+              수정/삭제하려면 연결된 명세서를 먼저 삭제해주세요.
+            </p>
+            <Link
+              href={`/invoices/${invoiceId}`}
+              className="inline-block mt-2 text-sm text-indigo-600 hover:text-indigo-800 underline"
+            >
+              연결된 명세서 보기 →
+            </Link>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700">거래처</label>
           <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+            disabled={isLocked}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:text-gray-500">
             <option value="">거래처 선택</option>
             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -101,7 +120,8 @@ export default function TransactionDetailPage() {
         <div>
           <label className="block text-sm font-medium text-gray-700">상품</label>
           <select value={productId} onChange={(e) => setProductId(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+            disabled={isLocked}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:text-gray-500">
             <option value="">상품 선택</option>
             {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
@@ -119,13 +139,15 @@ export default function TransactionDetailPage() {
         <div>
           <label className="block text-sm font-medium text-gray-700">주문일</label>
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
+            disabled={isLocked}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:text-gray-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">수량</label>
           <input type="text" inputMode="numeric" value={quantity}
             onChange={(e) => setQuantity(e.target.value.replace(/[^0-9-]/g, ''))}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
+            disabled={isLocked}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:text-gray-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">단가</label>
@@ -133,7 +155,8 @@ export default function TransactionDetailPage() {
             onChange={(e) => setUnitPrice(rawPrice(e.target.value))}
             onBlur={() => { if (unitPrice) setUnitPrice(formatPrice(unitPrice)) }}
             onFocus={() => { if (unitPrice) setUnitPrice(rawPrice(unitPrice)) }}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
+            disabled={isLocked}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md disabled:bg-gray-100 disabled:text-gray-500" />
         </div>
 
         <div className="p-3 bg-gray-50 rounded-md">
@@ -159,14 +182,18 @@ export default function TransactionDetailPage() {
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
-        <button onClick={handleSave} disabled={loading}
-          className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50">
-          {loading ? '저장 중...' : '저장하기'}
-        </button>
-        <button onClick={handleDelete}
-          className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600">
-          삭제
-        </button>
+        {!isLocked && (
+          <>
+            <button onClick={handleSave} disabled={loading}
+              className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50">
+              {loading ? '저장 중...' : '저장하기'}
+            </button>
+            <button onClick={handleDelete}
+              className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600">
+              삭제
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

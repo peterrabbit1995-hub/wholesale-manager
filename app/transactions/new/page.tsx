@@ -51,8 +51,46 @@ export default function NewTransactionPage() {
 
   const rawPrice = (value: string) => value.replace(/,/g, '')
 
+  // 임시 저장: savedList가 바뀔 때마다 DB에 자동 저장
+  const saveDraft = async (items: SavedItem[], cid: string) => {
+    if (items.length === 0) {
+      await supabase.from('draft_data').delete().eq('page_key', 'transactions/new')
+      return
+    }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('draft_data').upsert({
+      user_id: user.id,
+      page_key: 'transactions/new',
+      customer_id: cid || null,
+      data: { savedList: items },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,page_key' })
+  }
+
+  // 임시 저장 데이터 복원
+  const loadDraft = async () => {
+    const { data: draft } = await supabase
+      .from('draft_data')
+      .select('*')
+      .eq('page_key', 'transactions/new')
+      .single()
+
+    if (draft && draft.data?.savedList?.length > 0) {
+      const restored = confirm(
+        `이전에 입력하던 거래 목록(${draft.data.savedList.length}건)이 있습니다.\n복원하시겠습니까?`
+      )
+      if (restored) {
+        setSavedList(draft.data.savedList)
+        if (draft.customer_id) setCustomerId(draft.customer_id)
+      } else {
+        await supabase.from('draft_data').delete().eq('page_key', 'transactions/new')
+      }
+    }
+  }
+
   useEffect(() => {
-    loadData()
+    loadData().then(() => loadDraft())
   }, [])
 
   const loadData = async () => {
@@ -247,14 +285,19 @@ export default function NewTransactionPage() {
       alert('저장 실패: ' + error.message)
     } else {
       const prodName = products.find(p => p.id === productId)?.name || ''
-      setSavedList(prev => [...prev, {
+      const newItem = {
         id: saved.id,
         date: orderDate,
         name: prodName,
         quantity: parseInt(quantity),
         unit_price: parseFloat(rawPrice(unitPrice)),
         total,
-      }])
+      }
+      setSavedList(prev => {
+        const updated = [...prev, newItem]
+        saveDraft(updated, customerId)
+        return updated
+      })
       setProductId('')
       setProductSearch('')
       setQuantity('')
@@ -274,7 +317,11 @@ export default function NewTransactionPage() {
     if (error) {
       alert('삭제 실패: ' + error.message)
     } else {
-      setSavedList(prev => prev.filter(i => i.id !== itemId))
+      setSavedList(prev => {
+        const updated = prev.filter(i => i.id !== itemId)
+        saveDraft(updated, customerId)
+        return updated
+      })
     }
   }
 
