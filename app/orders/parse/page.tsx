@@ -110,9 +110,8 @@ export default function OrderParsePage() {
     if (aliasChecks[index]) {
       const aliasText = (aliasTexts[index] || parsedItems[index]?.original_text || parsedItems[index]?.product_name || '').trim()
       if (aliasText) {
-        const optionSnapshot = parsedItems[index]?.options || null
         await supabase.from('product_aliases').upsert(
-          { product_id: productId, alias: aliasText, option_snapshot: optionSnapshot },
+          { product_id: productId, alias: aliasText },
           { onConflict: 'alias' }
         )
       }

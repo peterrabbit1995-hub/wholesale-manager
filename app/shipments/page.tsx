@@ -56,6 +56,7 @@ export default function ShipmentsPage() {
   const [shippedSelected, setShippedSelected] = useState<Set<string>>(new Set())
   const [editingFields, setEditingFields] = useState<Record<string, string>>({})
   const [cancelling, setCancelling] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // 편집 키: shipmentId + field → "shipmentId:tracking" 또는 "shipmentId:note"
   const editKey = (shipmentId: string, field: EditField) => `${shipmentId}:${field}`
@@ -152,6 +153,55 @@ export default function ShipmentsPage() {
     if (!field) return '-'
     if (Array.isArray(field)) return field[0]?.name || '-'
     return field.name
+  }
+
+  // === 안내 메시지 생성 ===
+  const buildNotifyText = (tx: ShippedTransaction) => {
+    const productName = getName(tx.products)
+    const optionText = tx.options
+      ? ' (' + Object.entries(tx.options).map(([k, v]) => `${k}: ${v}`).join(', ') + ')'
+      : ''
+    const label = `${productName}${optionText} ${tx.quantity}개`
+
+    if (tx.tracking_number) {
+      return `${label} 발송했습니다. 송장번호: ${tx.tracking_number} 배송조회: https://www.ilogen.com/web/personal/trace/${tx.tracking_number}`
+    }
+    return `${label} 발송완료`
+  }
+
+  const copyToClipboard = async (text: string, id: string) => {
+    await navigator.clipboard.writeText(text)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 1500)
+  }
+
+  const copyOneNotify = (tx: ShippedTransaction) => {
+    copyToClipboard(buildNotifyText(tx), tx.shipment_id)
+  }
+
+  const copyGroupNotify = (group: GroupedByCustomer<ShippedTransaction>) => {
+    const txs = group.transactions
+    // 송장번호가 모두 같으면 묶어서 표시
+    const trackingNumbers = new Set(txs.map(t => t.tracking_number || ''))
+    if (trackingNumbers.size === 1) {
+      const items = txs.map(tx => {
+        const name = getName(tx.products)
+        const opt = tx.options
+          ? ' (' + Object.entries(tx.options).map(([k, v]) => `${k}: ${v}`).join(', ') + ')'
+          : ''
+        return `${name}${opt} ${tx.quantity}개`
+      }).join('\n')
+
+      const tracking = txs[0].tracking_number
+      const text = tracking
+        ? `${items}\n발송했습니다. 송장번호: ${tracking}\n배송조회: https://www.ilogen.com/web/personal/trace/${tracking}`
+        : `${items}\n발송완료`
+      copyToClipboard(text, `group:${group.customerId}`)
+    } else {
+      // 송장번호가 다르면 개별로
+      const text = txs.map(buildNotifyText).join('\n')
+      copyToClipboard(text, `group:${group.customerId}`)
+    }
   }
 
   // === 대기 탭: 선택 ===
@@ -525,16 +575,24 @@ export default function ShipmentsPage() {
                   const groupSomeSel = groupIds.some(id => shippedSelected.has(id)) && !groupAllSel
                   return (
                     <div key={group.customerId} className="mb-4 border rounded-lg overflow-hidden">
-                      <div className="bg-green-50 px-4 py-2 flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={groupAllSel}
-                          ref={(el) => { if (el) el.indeterminate = groupSomeSel }}
-                          onChange={() => toggleShippedCustomer(group)}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="font-medium text-sm">{group.customerName}</span>
-                        <span className="text-xs text-gray-500">({group.transactions.length}건)</span>
+                      <div className="bg-green-50 px-4 py-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={groupAllSel}
+                            ref={(el) => { if (el) el.indeterminate = groupSomeSel }}
+                            onChange={() => toggleShippedCustomer(group)}
+                            className="rounded border-gray-300"
+                          />
+                          <span className="font-medium text-sm">{group.customerName}</span>
+                          <span className="text-xs text-gray-500">({group.transactions.length}건)</span>
+                        </div>
+                        <button
+                          onClick={() => copyGroupNotify(group)}
+                          className="px-2 py-1 text-xs bg-white border border-green-300 text-green-700 rounded hover:bg-green-50"
+                        >
+                          {copiedId === `group:${group.customerId}` ? '복사됨!' : '전체 안내 복사'}
+                        </button>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -549,6 +607,7 @@ export default function ShipmentsPage() {
                               <th className="text-center py-2 px-1">방식</th>
                               <th className="text-left py-2 px-2">비고</th>
                               <th className="text-right py-2 px-2">발송일</th>
+                              <th className="w-16"></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -571,6 +630,14 @@ export default function ShipmentsPage() {
                                 </td>
                                 {renderEditableCell(tx, 'note', tx.note, '비고 입력')}
                                 <td className="py-2 px-2 text-right text-gray-500">{tx.shipped_at}</td>
+                                <td className="py-2 px-1 text-center">
+                                  <button
+                                    onClick={() => copyOneNotify(tx)}
+                                    className="text-xs text-green-600 hover:text-green-800 whitespace-nowrap"
+                                  >
+                                    {copiedId === tx.shipment_id ? '복사됨!' : '안내 복사'}
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                           </tbody>

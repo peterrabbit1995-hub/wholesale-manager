@@ -8,7 +8,6 @@ type AliasRow = {
   id: string
   alias: string
   product_id: string
-  option_snapshot: Record<string, string> | null
   product_name: string
 }
 
@@ -24,14 +23,13 @@ export default function AliasesPage() {
   const loadAliases = async () => {
     const { data } = await supabase
       .from('product_aliases')
-      .select('id, alias, product_id, option_snapshot, products(name)')
+      .select('id, alias, product_id, products(name)')
       .order('alias')
 
     const rows: AliasRow[] = (data || []).map((row: Record<string, unknown>) => ({
       id: row.id as string,
       alias: row.alias as string,
       product_id: row.product_id as string,
-      option_snapshot: row.option_snapshot as Record<string, string> | null,
       product_name: (row.products as { name: string } | null)?.name || '(알 수 없음)',
     }))
 
@@ -87,7 +85,6 @@ export default function AliasesPage() {
               <tr className="bg-gray-50 border-b">
                 <th className="text-left py-2 px-3">별칭</th>
                 <th className="text-left py-2 px-3">상품명</th>
-                <th className="text-left py-2 px-3">옵션</th>
                 <th className="w-12"></th>
               </tr>
             </thead>
@@ -103,11 +100,6 @@ export default function AliasesPage() {
                     </Link>
                   </td>
                   <td className="py-2 px-3 text-gray-700">{a.product_name}</td>
-                  <td className="py-2 px-3 text-xs text-gray-500">
-                    {a.option_snapshot
-                      ? Object.entries(a.option_snapshot).map(([k, v]) => `${k}: ${v}`).join(', ')
-                      : '-'}
-                  </td>
                   <td className="py-2 px-1">
                     <button
                       onClick={() => deleteAlias(a.id, a.alias)}

@@ -10,6 +10,15 @@ type PriceTier = {
   name: string
 }
 
+type PriceHistoryItem = {
+  id: string
+  old_price: number
+  new_price: number
+  created_at: string
+  product_id: string
+  product_name: string
+}
+
 export default function CustomerDetailPage() {
   const router = useRouter()
   const { id } = useParams()
@@ -23,6 +32,7 @@ export default function CustomerDetailPage() {
   const [defaultTierId, setDefaultTierId] = useState('')
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
   const [loading, setLoading] = useState(false)
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryItem[]>([])
 
 const formatPhone = (value: string) => {
     const nums = value.replace(/[^0-9]/g, '')
@@ -38,6 +48,7 @@ const formatPhone = (value: string) => {
 
   useEffect(() => {
     loadData()
+    loadPriceHistory()
   }, [])
 
   const loadData = async () => {
@@ -56,6 +67,27 @@ const formatPhone = (value: string) => {
       setDefaultTierId(customer.default_tier_id || '')
     }
     setPriceTiers(tiers || [])
+  }
+
+  const loadPriceHistory = async () => {
+    const { data } = await supabase
+      .from('price_history')
+      .select('id, old_price, new_price, created_at, product_id, products(name)')
+      .eq('customer_id', id)
+      .eq('change_type', 'special')
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    const rows: PriceHistoryItem[] = (data || []).map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      old_price: row.old_price as number,
+      new_price: row.new_price as number,
+      created_at: row.created_at as string,
+      product_id: row.product_id as string,
+      product_name: (row.products as { name: string } | null)?.name || '(알 수 없음)',
+    }))
+
+    setPriceHistory(rows)
   }
 
   const handleSave = async () => {
@@ -88,7 +120,7 @@ const formatPhone = (value: string) => {
   return (
     <div className="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
       <div className="flex items-center mb-6">
-        <Link href="/customers" className="text-gray-500 mr-3">← 목록</Link>
+        <Link href="/customers" className="text-gray-500 mr-3">&larr; 목록</Link>
         <h1 className="text-2xl font-bold">거래처 수정</h1>
       </div>
       <div className="space-y-4">
@@ -132,13 +164,45 @@ const formatPhone = (value: string) => {
           href={`/customers/${id}/prices`}
           className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
         >
-          💰 특별단가 설정
+          특별단가 설정
         </Link>
         <button onClick={handleDelete}
           className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600">
           삭제
         </button>
+
+        {/* 특별단가 변동 이력 */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <h2 className="text-lg font-bold mb-3">특별단가 변동 이력</h2>
+          {priceHistory.length === 0 ? (
+            <p className="text-sm text-gray-400">특별단가 변동 이력이 없습니다.</p>
+          ) : (
+            <div className="space-y-2">
+              {priceHistory.map((h) => {
+                const old = Number(h.old_price)
+                const now = Number(h.new_price)
+                let desc = ''
+                if (old === 0) {
+                  desc = `특별단가 설정 ${now.toLocaleString()}원`
+                } else if (now === 0) {
+                  desc = `특별단가 해제 (${old.toLocaleString()}원)`
+                } else {
+                  desc = `${old.toLocaleString()} → ${now.toLocaleString()}원`
+                }
+                return (
+                  <div key={h.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-md text-sm">
+                    <span className="text-xs text-gray-500 shrink-0">
+                      {new Date(h.created_at).toLocaleDateString('ko-KR')}
+                    </span>
+                    <span className="font-medium shrink-0">{h.product_name}</span>
+                    <span className="text-gray-600">{desc}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
-} 
+}

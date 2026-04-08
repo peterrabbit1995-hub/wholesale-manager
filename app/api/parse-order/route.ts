@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   // 상품 별칭 조회
   const { data: productAliases } = await supabase
     .from('product_aliases')
-    .select('product_id, alias, option_snapshot')
+    .select('product_id, alias')
 
   // 거래처 가격 정보 조회 (특별단가 + 등급단가)
   const { data: customer } = await supabase
@@ -78,8 +78,7 @@ export async function POST(request: Request) {
   const aliasListText = productAliases && productAliases.length > 0
     ? productAliases.map(a => {
         const product = products.find(p => p.id === a.product_id)
-        const optText = a.option_snapshot ? ` (옵션: ${JSON.stringify(a.option_snapshot)})` : ''
-        return `- "${a.alias}" → ${product?.name ?? '알 수 없는 상품'}${optText}`
+        return `- "${a.alias}" → ${product?.name ?? '알 수 없는 상품'}`
       }).join('\n')
     : '(등록된 별칭 없음)'
 

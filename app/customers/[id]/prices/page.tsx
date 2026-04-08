@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { recordPriceChange } from '@/lib/priceHistory'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -126,6 +127,14 @@ export default function CustomerPricesPage() {
     if (error) {
       alert('저장 실패: ' + error.message)
     } else {
+      await recordPriceChange({
+        supabase,
+        product_id: selectedProductId,
+        change_type: 'special',
+        customer_id: id as string,
+        old_price: 0,
+        new_price: parseFloat(rawPrice(specialPrice)),
+      })
       setSelectedProductId('')
       setSpecialPrice('')
       setProductSearch('')
@@ -139,14 +148,27 @@ export default function CustomerPricesPage() {
     if (!editPrice) return
     setLoading(true)
 
+    const oldItem = customerPrices.find(cp => cp.id === cpId)
+    const newPrice = parseFloat(rawPrice(editPrice))
+
     const { error } = await supabase
       .from('customer_prices')
-      .update({ special_price: parseFloat(rawPrice(editPrice)) })
+      .update({ special_price: newPrice })
       .eq('id', cpId)
 
     if (error) {
       alert('수정 실패: ' + error.message)
     } else {
+      if (oldItem && oldItem.special_price !== newPrice) {
+        await recordPriceChange({
+          supabase,
+          product_id: oldItem.product_id,
+          change_type: 'special',
+          customer_id: id as string,
+          old_price: oldItem.special_price,
+          new_price: newPrice,
+        })
+      }
       setEditingId(null)
       setEditPrice('')
       await loadData()
@@ -158,6 +180,8 @@ export default function CustomerPricesPage() {
   const handleDelete = async (cpId: string) => {
     if (!confirm('이 특별단가를 삭제하시겠습니까?')) return
 
+    const oldItem = customerPrices.find(cp => cp.id === cpId)
+
     const { error } = await supabase
       .from('customer_prices')
       .delete()
@@ -166,6 +190,16 @@ export default function CustomerPricesPage() {
     if (error) {
       alert('삭제 실패: ' + error.message)
     } else {
+      if (oldItem) {
+        await recordPriceChange({
+          supabase,
+          product_id: oldItem.product_id,
+          change_type: 'special',
+          customer_id: id as string,
+          old_price: oldItem.special_price,
+          new_price: 0,
+        })
+      }
       await loadData()
     }
   }
