@@ -10,6 +10,7 @@ const menuItems = [
   { href: '/dashboard', label: '홈' },
   { href: '/transactions', label: '거래' },
   { href: '/orders/parse', label: '주문인식' },
+  { href: '/shipments', label: '발송' },
   { href: '/invoices', label: '명세서' },
   { href: '/payments', label: '입금' },
   { href: '/receivables', label: '미수금' },

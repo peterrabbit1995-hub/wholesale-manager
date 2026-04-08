@@ -24,7 +24,8 @@ export default function NewInvoicePage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerId, setCustomerId] = useState('')
   const today = new Date().toISOString().split('T')[0]
-  const [periodStart, setPeriodStart] = useState('2024-01-01')
+  const firstOfMonth = today.slice(0, 7) + '-01'
+  const [periodStart, setPeriodStart] = useState(firstOfMonth)
   const [periodEnd, setPeriodEnd] = useState(today)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [searched, setSearched] = useState(false)
@@ -40,6 +41,30 @@ export default function NewInvoicePage() {
       .select('id, name')
       .order('name')
     setCustomers(data || [])
+  }
+
+  const handleCustomerChange = async (selectedId: string) => {
+    setCustomerId(selectedId)
+    setSearched(false)
+
+    if (!selectedId) {
+      setPeriodStart(firstOfMonth)
+      return
+    }
+
+    const { data } = await supabase
+      .from('transactions')
+      .select('order_date')
+      .eq('customer_id', selectedId)
+      .is('invoice_id', null)
+      .order('order_date', { ascending: true })
+      .limit(1)
+
+    if (data && data.length > 0) {
+      setPeriodStart(data[0].order_date)
+    } else {
+      setPeriodStart(firstOfMonth)
+    }
   }
 
   const getProductName = (t: Transaction): string => {
@@ -130,7 +155,7 @@ export default function NewInvoicePage() {
           <label className="block text-sm font-medium text-gray-700">거래처 *</label>
           <select
             value={customerId}
-            onChange={(e) => { setCustomerId(e.target.value); setSearched(false) }}
+            onChange={(e) => handleCustomerChange(e.target.value)}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
           >
             <option value="">거래처 선택</option>
