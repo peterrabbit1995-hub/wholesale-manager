@@ -42,6 +42,7 @@ export default function OrderParsePage() {
   const [productSearches, setProductSearches] = useState<Record<number, string>>({})
   const [aliasChecks, setAliasChecks] = useState<Record<number, boolean>>({})
   const [aliasTexts, setAliasTexts] = useState<Record<number, string>>({})
+  const [editingProduct, setEditingProduct] = useState<Record<number, boolean>>({})
 
   // 임시 저장: parsedItems가 바뀔 때마다 DB에 자동 저장
   const saveDraft = async (items: ParsedItem[], cid: string) => {
@@ -134,6 +135,7 @@ export default function OrderParsePage() {
       return updated
     })
     setProductSearches(prev => ({ ...prev, [index]: '' }))
+    setEditingProduct(prev => ({ ...prev, [index]: false }))
   }
 
   const lookupPrice = async (
@@ -467,21 +469,36 @@ export default function OrderParsePage() {
                     return (
                       <tr key={idx} className={`border-b ${isUnmatched ? 'bg-amber-50' : ''}`}>
                         <td className="py-2 px-2">
-                          <div>{item.product_name}</div>
                           {isUnmatched ? (
+                            <div>{item.product_name}</div>
+                          ) : (
+                            <div
+                              className="cursor-pointer hover:text-indigo-600 hover:underline"
+                              title="클릭하면 다른 상품으로 변경할 수 있습니다"
+                              onClick={() => setEditingProduct(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                            >
+                              {item.product_name}
+                              <span className="ml-1 text-xs text-gray-400">✎</span>
+                            </div>
+                          )}
+                          {(isUnmatched || editingProduct[idx]) ? (
                             <div className="mt-1">
-                              <span className="text-xs text-amber-600">⚠ 미매칭 — 상품을 선택해주세요</span>
+                              {isUnmatched ? (
+                                <span className="text-xs text-amber-600">⚠ 미매칭 — 상품을 선택해주세요</span>
+                              ) : (
+                                <span className="text-xs text-indigo-500">🔄 다른 상품으로 변경</span>
+                              )}
                               <input
                                 type="text"
                                 placeholder="상품명 검색..."
                                 value={productSearches[idx] || ''}
                                 onChange={(e) => setProductSearches(prev => ({ ...prev, [idx]: e.target.value }))}
-                                className="mt-1 block w-full px-2 py-1 text-sm border border-amber-300 rounded"
+                                className={`mt-1 block w-full px-2 py-1 text-sm border rounded ${isUnmatched ? 'border-amber-300' : 'border-indigo-300'}`}
                               />
                               <select
                                 value=""
                                 onChange={(e) => handleProductMatch(idx, e.target.value)}
-                                className="mt-1 block w-full px-2 py-1 text-sm border border-amber-300 rounded"
+                                className={`mt-1 block w-full px-2 py-1 text-sm border rounded ${isUnmatched ? 'border-amber-300' : 'border-indigo-300'}`}
                                 size={productSearches[idx] ? Math.min(products.filter(p => productSearches[idx]!.toLowerCase().split(' ').every(w => p.name.toLowerCase().includes(w))).length + 2, 7) : 1}
                               >
                                 <option value="">상품 선택</option>
@@ -516,6 +533,12 @@ export default function OrderParsePage() {
                                   placeholder="저장할 별칭"
                                   className="mt-1 block w-full px-2 py-1 text-sm border border-indigo-300 rounded bg-indigo-50"
                                 />
+                              )}
+                              {!isUnmatched && (
+                                <button
+                                  onClick={() => setEditingProduct(prev => ({ ...prev, [idx]: false }))}
+                                  className="mt-1 text-xs text-gray-500 hover:text-gray-700"
+                                >취소</button>
                               )}
                             </div>
                           ) : (
