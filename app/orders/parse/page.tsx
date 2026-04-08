@@ -240,6 +240,23 @@ export default function OrderParsePage() {
     if (!customerId) return alert('거래처를 선택해주세요.')
     if (!message.trim()) return alert('주문 메시지를 입력해주세요.')
 
+    // 중복 메시지 체크
+    const { data: existing } = await supabase
+      .from('order_messages')
+      .select('id, created_at')
+      .eq('customer_id', customerId)
+      .eq('message', message.trim())
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      const prevDate = new Date(existing[0].created_at).toLocaleString('ko-KR')
+      const proceed = confirm(
+        `이 메시지는 이미 처리되었습니다. (${prevDate})\n다시 처리하시겠습니까?`
+      )
+      if (!proceed) return
+    }
+
     setLoading(true)
     setError('')
     setParsedItems([])

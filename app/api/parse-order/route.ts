@@ -139,6 +139,13 @@ ${aliasListText}
     }
 
     const parsed = JSON.parse(jsonMatch[0])
+
+    // 원문 메시지를 order_messages 테이블에 저장
+    await supabase.from('order_messages').insert({
+      customer_id: customerId,
+      message: message,
+    })
+
     return Response.json({ items: parsed, customerName: customer?.name })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '알 수 없는 오류'
