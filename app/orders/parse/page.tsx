@@ -10,6 +10,7 @@ type Product = { id: string; name: string }
 type ParsedItem = {
   product_id: string | null
   product_name: string
+  original_text: string | null
   options: Record<string, string> | null
   quantity: number
   unit_price: number | null
@@ -107,7 +108,7 @@ export default function OrderParsePage() {
 
     // 별칭 저장 체크되어 있으면 product_aliases에 저장
     if (aliasChecks[index]) {
-      const aliasText = (aliasTexts[index] || parsedItems[index]?.product_name || '').trim()
+      const aliasText = (aliasTexts[index] || parsedItems[index]?.original_text || parsedItems[index]?.product_name || '').trim()
       if (aliasText) {
         const optionSnapshot = parsedItems[index]?.options || null
         await supabase.from('product_aliases').upsert(
@@ -241,13 +242,18 @@ export default function OrderParsePage() {
     if (!message.trim()) return alert('주문 메시지를 입력해주세요.')
 
     // 중복 메시지 체크
-    const { data: existing } = await supabase
+    const { data: existing, error: checkError } = await supabase
       .from('order_messages')
       .select('id, created_at')
       .eq('customer_id', customerId)
-      .eq('message', message.trim())
+      .eq('original_text', message.trim())
       .order('created_at', { ascending: false })
       .limit(1)
+
+    if (checkError) {
+      alert('중복 체크 실패: ' + checkError.message + '\n코드: ' + checkError.code)
+      return
+    }
 
     if (existing && existing.length > 0) {
       const prevDate = new Date(existing[0].created_at).toLocaleString('ko-KR')
@@ -274,6 +280,11 @@ export default function OrderParsePage() {
         setError(data.error || '분석 실패')
         setLoading(false)
         return
+      }
+
+      // 메시지 저장 에러가 있으면 표시 (디버그용)
+      if (data._msgSaveError) {
+        alert('메시지 저장 실패: ' + data._msgSaveError)
       }
 
       // 각 항목에 대해 가격 조회
@@ -535,7 +546,7 @@ export default function OrderParsePage() {
                                   onChange={(e) => {
                                     setAliasChecks(prev => ({ ...prev, [idx]: e.target.checked }))
                                     if (e.target.checked && !aliasTexts[idx]) {
-                                      setAliasTexts(prev => ({ ...prev, [idx]: item.product_name }))
+                                      setAliasTexts(prev => ({ ...prev, [idx]: item.original_text || item.product_name }))
                                     }
                                   }}
                                   className="rounded border-gray-300"
@@ -545,7 +556,7 @@ export default function OrderParsePage() {
                               {aliasChecks[idx] && (
                                 <input
                                   type="text"
-                                  value={aliasTexts[idx] ?? item.product_name}
+                                  value={aliasTexts[idx] ?? item.original_text ?? item.product_name}
                                   onChange={(e) => setAliasTexts(prev => ({ ...prev, [idx]: e.target.value }))}
                                   placeholder="저장할 별칭"
                                   className="mt-1 block w-full px-2 py-1 text-sm border border-indigo-300 rounded bg-indigo-50"

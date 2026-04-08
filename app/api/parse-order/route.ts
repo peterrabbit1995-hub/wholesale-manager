@@ -112,6 +112,7 @@ ${aliasListText}
   {
     "product_id": "매칭된 상품 UUID 또는 null",
     "product_name": "상품명",
+    "original_text": "메시지에서 이 상품을 가리킨 원문 표현 그대로",
     "options": { "옵션명": "옵션값" } 또는 null,
     "quantity": 숫자(반품은 음수),
     "unit_price": 단가숫자 또는 null
@@ -141,12 +142,17 @@ ${aliasListText}
     const parsed = JSON.parse(jsonMatch[0])
 
     // 원문 메시지를 order_messages 테이블에 저장
-    await supabase.from('order_messages').insert({
+    const { error: msgError } = await supabase.from('order_messages').insert({
       customer_id: customerId,
-      message: message,
+      original_text: message,
+      message_date: new Date().toISOString(),
     })
 
-    return Response.json({ items: parsed, customerName: customer?.name })
+    return Response.json({
+      items: parsed,
+      customerName: customer?.name,
+      _msgSaveError: msgError ? `${msgError.message} (${msgError.code})` : null,
+    })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '알 수 없는 오류'
     return Response.json({ error: 'AI 호출 실패: ' + message }, { status: 500 })
