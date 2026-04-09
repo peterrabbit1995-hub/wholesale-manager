@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPrice, rawPrice, paramToString } from '@/lib/utils'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -10,7 +12,9 @@ type Product = { id: string; name: string }
 
 export default function TransactionDetailPage() {
   const router = useRouter()
-  const { id } = useParams()
+  const toast = useToast()
+  const { id: rawId } = useParams()
+  const id = paramToString(rawId as string | string[])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [customerId, setCustomerId] = useState('')
@@ -25,13 +29,6 @@ export default function TransactionDetailPage() {
   const [invoiceId, setInvoiceId] = useState<string | null>(null)
 
   const isLocked = invoiceId !== null
-
-  const formatPrice = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    return nums ? Number(nums).toLocaleString() : ''
-  }
-
-  const rawPrice = (value: string) => value.replace(/,/g, '')
 
   useEffect(() => {
     loadData()
@@ -74,16 +71,17 @@ export default function TransactionDetailPage() {
     }).eq('id', id)
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
-      alert('저장되었습니다!')
+      toast.success('저장되었습니다!')
     }
     setLoading(false)
   }
 
   const handleDelete = async () => {
     if (!confirm('정말 삭제하시겠습니까?')) return
-    await supabase.from('transactions').delete().eq('id', id)
+    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    if (error) return toast.error('삭제 실패: ' + error.message)
     router.push('/transactions')
   }
 

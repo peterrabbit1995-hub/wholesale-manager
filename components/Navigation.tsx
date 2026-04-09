@@ -17,6 +17,7 @@ const menuItems = [
   { href: '/customers', label: '거래처' },
   { href: '/products', label: '상품' },
   { href: '/aliases', label: '별칭' },
+  { href: '/export', label: '내보내기' },
   { href: '/settings/company', label: '설정' },
 ]
 

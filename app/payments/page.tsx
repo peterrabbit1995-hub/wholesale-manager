@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPrice, rawPrice, getName } from '@/lib/utils'
 
 type Customer = { id: string; name: string }
 type Payment = {
@@ -13,6 +15,7 @@ type Payment = {
 }
 
 export default function PaymentsPage() {
+  const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,13 +26,6 @@ export default function PaymentsPage() {
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
-
-  const formatPrice = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    return nums ? Number(nums).toLocaleString() : ''
-  }
-
-  const rawPrice = (value: string) => value.replace(/,/g, '')
 
   useEffect(() => {
     loadData()
@@ -48,15 +44,12 @@ export default function PaymentsPage() {
     setLoading(false)
   }
 
-  const getName = (field: { name: string } | { name: string }[] | null) => {
-    if (!field) return '-'
-    if (Array.isArray(field)) return field[0]?.name || '-'
-    return field.name
-  }
-
   const handleSave = async () => {
     if (!customerId || !amount) {
-      return alert('거래처와 입금액을 입력해주세요.')
+      return toast.error('거래처와 입금액을 입력해주세요.')
+    }
+    if (parseFloat(rawPrice(amount)) <= 0) {
+      return toast.error('입금액은 0보다 커야 합니다.')
     }
     setSaving(true)
 
@@ -68,7 +61,7 @@ export default function PaymentsPage() {
     })
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
       setAmount('')
       setNote('')
@@ -81,7 +74,7 @@ export default function PaymentsPage() {
     if (!confirm('이 입금 기록을 삭제하시겠습니까?')) return
     const { error } = await supabase.from('payments').delete().eq('id', id)
     if (error) {
-      alert('삭제 실패: ' + error.message)
+      toast.error('삭제 실패: ' + error.message)
     } else {
       setPayments(prev => prev.filter(p => p.id !== id))
     }

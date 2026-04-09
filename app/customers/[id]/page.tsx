@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPhone, paramToString } from '@/lib/utils'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -14,6 +16,7 @@ type PriceHistoryItem = {
   id: string
   old_price: number
   new_price: number
+  action: string | null
   created_at: string
   product_id: string
   product_name: string
@@ -21,7 +24,9 @@ type PriceHistoryItem = {
 
 export default function CustomerDetailPage() {
   const router = useRouter()
-  const { id } = useParams()
+  const toast = useToast()
+  const { id: rawId } = useParams()
+  const id = paramToString(rawId as string | string[])
   const [name, setName] = useState('')
   const [representative, setRepresentative] = useState('')
   const [phone, setPhone] = useState('')
@@ -33,18 +38,6 @@ export default function CustomerDetailPage() {
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
   const [loading, setLoading] = useState(false)
   const [priceHistory, setPriceHistory] = useState<PriceHistoryItem[]>([])
-
-const formatPhone = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    if (nums.startsWith('02')) {
-      if (nums.length <= 2) return nums
-      if (nums.length <= 6) return `${nums.slice(0, 2)}-${nums.slice(2)}`
-      return `${nums.slice(0, 2)}-${nums.slice(2, 6)}-${nums.slice(6, 10)}`
-    }
-    if (nums.length <= 3) return nums
-    if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`
-    return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 11)}`
-  }
 
   useEffect(() => {
     loadData()
@@ -72,7 +65,7 @@ const formatPhone = (value: string) => {
   const loadPriceHistory = async () => {
     const { data } = await supabase
       .from('price_history')
-      .select('id, old_price, new_price, created_at, product_id, products(name)')
+      .select('id, old_price, new_price, action, created_at, product_id, products(name)')
       .eq('customer_id', id)
       .eq('change_type', 'special')
       .order('created_at', { ascending: false })
@@ -82,6 +75,7 @@ const formatPhone = (value: string) => {
       id: row.id as string,
       old_price: row.old_price as number,
       new_price: row.new_price as number,
+      action: row.action as string | null,
       created_at: row.created_at as string,
       product_id: row.product_id as string,
       product_name: (row.products as { name: string } | null)?.name || '(알 수 없음)',
@@ -100,9 +94,9 @@ const formatPhone = (value: string) => {
     }).eq('id', id)
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
-      alert('저장되었습니다!')
+      toast.success('저장되었습니다!')
     }
     setLoading(false)
   }
@@ -111,10 +105,22 @@ const formatPhone = (value: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return
     const { error } = await supabase.from('customers').delete().eq('id', id)
     if (error) {
-      alert('삭제 실패: ' + error.message)
+      toast.error('삭제 실패: ' + error.message)
     } else {
       router.push('/customers')
     }
+  }
+
+  const formatHistoryDesc = (h: PriceHistoryItem): string => {
+    const old = Number(h.old_price)
+    const now = Number(h.new_price)
+    if (h.action === 'add') {
+      return `${old.toLocaleString()} → ${now.toLocaleString()}원 (특별단가 설정)`
+    }
+    if (h.action === 'delete') {
+      return `${old.toLocaleString()} → ${now.toLocaleString()}원 (특별단가 해제)`
+    }
+    return `${old.toLocaleString()} → ${now.toLocaleString()}원`
   }
 
   return (
@@ -178,27 +184,15 @@ const formatPhone = (value: string) => {
             <p className="text-sm text-gray-400">특별단가 변동 이력이 없습니다.</p>
           ) : (
             <div className="space-y-2">
-              {priceHistory.map((h) => {
-                const old = Number(h.old_price)
-                const now = Number(h.new_price)
-                let desc = ''
-                if (old === 0) {
-                  desc = `특별단가 설정 ${now.toLocaleString()}원`
-                } else if (now === 0) {
-                  desc = `특별단가 해제 (${old.toLocaleString()}원)`
-                } else {
-                  desc = `${old.toLocaleString()} → ${now.toLocaleString()}원`
-                }
-                return (
-                  <div key={h.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-md text-sm">
-                    <span className="text-xs text-gray-500 shrink-0">
-                      {new Date(h.created_at).toLocaleDateString('ko-KR')}
-                    </span>
-                    <span className="font-medium shrink-0">{h.product_name}</span>
-                    <span className="text-gray-600">{desc}</span>
-                  </div>
-                )
-              })}
+              {priceHistory.map((h) => (
+                <div key={h.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-md text-sm">
+                  <span className="text-xs text-gray-500 shrink-0">
+                    {new Date(h.created_at).toLocaleDateString('ko-KR')}
+                  </span>
+                  <span className="font-medium shrink-0">{h.product_name}</span>
+                  <span className="text-gray-600">{formatHistoryDesc(h)}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>

@@ -8,6 +8,7 @@ type PriceChangeParams = {
   customer_id?: string
   old_price: number
   new_price: number
+  action?: 'add' | 'update' | 'delete'
 }
 
 export async function recordPriceChange(params: PriceChangeParams) {
@@ -21,5 +22,6 @@ export async function recordPriceChange(params: PriceChangeParams) {
     customer_id: params.customer_id || null,
     old_price: params.old_price,
     new_price: params.new_price,
+    action: params.action || null,
   })
 }

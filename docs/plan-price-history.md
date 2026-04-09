@@ -2,6 +2,17 @@
 
 ---
 
+## 현재 진행 상태
+
+| 항목 | 상태 |
+|------|------|
+| 작업 A (상품 옵션 설정 개선) | 미착수 |
+| 작업 B Step 1~3 (DB, 이력 기록, 이력 표시) | 구현 완료 (테스트 필요) |
+| 작업 B Step 4~5 (주문 시 안내, 명세서 비고) | 다음 세션 |
+| 거래처 상세 특별단가 이력 섹션 | 구현 완료 |
+
+---
+
 # [작업 A] 상품 옵션 설정 개선
 
 ## 배경
@@ -53,6 +64,9 @@
 
 ## Step 1: DB 테이블 생성
 
+> **참고:** 실제 DB에는 이미 테이블이 있고, ALTER TABLE로 change_type, customer_id 추가 완료.
+> 아래 SQL은 참고용(처음부터 만들 때 기준).
+
 **파일:** `supabase/migrations/20260408_create_price_history.sql`
 
 ```sql
@@ -80,7 +94,8 @@ create table price_history (
 - `recordPriceChange({ product_id, change_type, tier_id?, customer_id?, old_price, new_price })`
 - old_price === new_price이면 기록하지 않음 (변동 없음)
 - 원가(tier level=0)는 기록하지 않음
-- 신규 등록(old_price가 없는 경우)은 기록하지 않음
+- 상품 신규 등록은 기록하지 않음 (최초 가격 설정)
+- 특별단가 추가/삭제는 old_price=0 또는 new_price=0으로 기록
 
 ### 이력 기록 대상 페이지 3곳
 
@@ -92,9 +107,9 @@ create table price_history (
   - tier.level >= 2 → change_type: `'tier'`
 
 **2-2. `app/customers/[id]/prices/page.tsx` — 특별단가**
-- `handleAdd`: 기록 안 함 (신규 등록이므로 old_price 없음)
+- `handleAdd`: old_price=0, new_price=설정한 단가로 기록
 - `handleUpdate`: 수정 전 기존값 → old_price, 새 값 → new_price로 기록
-- `handleDelete`: 기록 안 함 (삭제는 가격 변동이 아님)
+- `handleDelete`: old_price=삭제 전 단가, new_price=0으로 기록
 
 **2-3. `app/products/new/page.tsx` — 신규 상품 생성**
 - 기록 안 함 (최초 등록이므로 old_price 없음)
@@ -150,6 +165,12 @@ create table price_history (
 - 가격 변동 안내(Step 4)에는 절대 포함하지 않음
 - 명세서 비고(Step 5)에도 절대 포함하지 않음
 
+## 거래처 상세 특별단가 이력 표시 형식
+
+- old_price가 0이면: **"특별단가 설정 [new_price]원"** (추가)
+- new_price가 0이면: **"특별단가 해제 ([old_price]원)"** (삭제)
+- 둘 다 0이 아니면: **"[old_price] → [new_price]원"** (수정)
+
 ## 거래처 노출 규칙
 
 거래처에 보이는 모든 안내/명세서에서:
@@ -163,7 +184,8 @@ create table price_history (
 | `supabase/migrations/20260408_create_price_history.sql` | 신규 | 테이블 + 인덱스 |
 | `lib/priceHistory.ts` | 신규 | recordPriceChange 헬퍼 |
 | `app/products/[id]/page.tsx` | 수정 | 이력 기록 + 이력 표시 |
-| `app/customers/[id]/prices/page.tsx` | 수정 | 특별단가 수정 시 이력 기록 |
+| `app/customers/[id]/prices/page.tsx` | 수정 | 특별단가 추가/수정/삭제 시 이력 기록 |
+| `app/customers/[id]/page.tsx` | 수정 | 특별단가 변동 이력 표시 섹션 추가 |
 
 ## 검증 방법
 
@@ -171,5 +193,7 @@ create table price_history (
 2. 상품 상세에서 등급 단가 수정 → price_history에 tier 레코드 생성 확인
 3. 거래처 특별단가 수정 → price_history에 special 레코드 생성 확인
 4. 상품 상세 페이지 하단에 이력 테이블 표시 확인
-5. 신규 상품 등록, 특별단가 추가/삭제 시 이력이 기록되지 않는지 확인
+5. 특별단가 추가 시 old_price=0으로 기록되는지 확인
+6. 특별단가 삭제 시 new_price=0으로 기록되는지 확인
+7. 신규 상품 등록 시 이력이 기록되지 않는지 확인
 6. `npx next build` 성공 확인

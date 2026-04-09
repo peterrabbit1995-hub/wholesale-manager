@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -13,6 +14,7 @@ type PriceTier = {
 
 export default function NewProductPage() {
   const router = useRouter()
+  const toast = useToast()
   const [name, setName] = useState('')
   const [prices, setPrices] = useState<Record<string, string>>({})
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
@@ -31,7 +33,7 @@ export default function NewProductPage() {
   }
 
   const handleSave = async () => {
-    if (!name) return alert('상품명을 입력해주세요.')
+    if (!name) return toast.error('상품명을 입력해주세요.')
     setLoading(true)
 
     const { data: product, error } = await supabase
@@ -41,7 +43,7 @@ export default function NewProductPage() {
       .single()
 
     if (error || !product) {
-      alert('상품 저장 실패: ' + error?.message)
+      toast.error('상품 저장 실패: ' + error?.message)
       setLoading(false)
       return
     }

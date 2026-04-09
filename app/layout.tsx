@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
+import { ToastProvider } from "@/lib/ToastContext";
 
 export const metadata: Metadata = {
   title: "도매상 관리 시스템",
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-gray-50">
-        <Navigation />
-        {children}
+        <ToastProvider>
+          <Navigation />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -21,6 +22,7 @@ type Transaction = {
 
 export default function NewInvoicePage() {
   const router = useRouter()
+  const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerId, setCustomerId] = useState('')
   const today = new Date().toISOString().split('T')[0]
@@ -80,7 +82,10 @@ export default function NewInvoicePage() {
 
   const handleSearch = async () => {
     if (!customerId || !periodStart || !periodEnd) {
-      return alert('거래처와 기간을 모두 선택해주세요.')
+      return toast.error('거래처와 기간을 모두 선택해주세요.')
+    }
+    if (periodStart > periodEnd) {
+      return toast.error('시작일이 종료일보다 늦습니다.')
     }
 
     const { data } = await supabase
@@ -101,45 +106,30 @@ export default function NewInvoicePage() {
 
   const handleCreate = async () => {
     if (uninvoiced.length === 0) {
-      return alert('명세서에 포함할 거래 내역이 없습니다.')
+      return toast.error('명세서에 포함할 거래 내역이 없습니다.')
     }
 
     setLoading(true)
 
-    // 1. 명세서 생성
-    const { data: invoice, error: invError } = await supabase
-      .from('invoices')
-      .insert({
-        customer_id: customerId,
-        issue_date: new Date().toISOString().split('T')[0],
-        period_start: periodStart,
-        period_end: periodEnd,
-        total_amount: totalAmount,
-        status: '미발송',
-      })
-      .select('id')
-      .single()
-
-    if (invError || !invoice) {
-      alert('명세서 생성 실패: ' + (invError?.message || ''))
-      setLoading(false)
-      return
-    }
-
-    // 2. 거래 내역에 invoice_id 연결
     const txIds = uninvoiced.map((t) => t.id)
-    const { error: txError } = await supabase
-      .from('transactions')
-      .update({ invoice_id: invoice.id })
-      .in('id', txIds)
 
-    if (txError) {
-      alert('거래 연결 실패: ' + txError.message)
+    const { data: invoiceId, error } = await supabase.rpc('create_invoice_with_transactions', {
+      p_customer_id: customerId,
+      p_issue_date: new Date().toISOString().split('T')[0],
+      p_period_start: periodStart,
+      p_period_end: periodEnd,
+      p_total_amount: totalAmount,
+      p_status: '미발송',
+      p_transaction_ids: txIds,
+    })
+
+    if (error) {
+      toast.error('명세서 생성 실패: ' + error.message)
       setLoading(false)
       return
     }
 
-    router.push(`/invoices/${invoice.id}`)
+    router.push(`/invoices/${invoiceId}`)
   }
 
   return (

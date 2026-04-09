@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { displayPrice } from '@/lib/utils'
+import { lookupPrice as lookupPriceLib } from '@/lib/lookupPrice'
 import Link from 'next/link'
 
 type Customer = { id: string; name: string; default_tier_id: string | null }
 type Product = { id: string; name: string }
+
+type PriceChangeInfo = {
+  date: string
+  oldPrice: number
+  newPrice: number
+}
 
 type ParsedItem = {
   product_id: string | null
@@ -30,6 +39,7 @@ type SavedItem = {
 }
 
 export default function OrderParsePage() {
+  const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [customerId, setCustomerId] = useState('')
@@ -44,6 +54,13 @@ export default function OrderParsePage() {
   const [aliasChecks, setAliasChecks] = useState<Record<number, boolean>>({})
   const [aliasTexts, setAliasTexts] = useState<Record<number, string>>({})
   const [editingProduct, setEditingProduct] = useState<Record<number, boolean>>({})
+
+  // 가격 변동 알림 (항목별)
+  const [priceChanges, setPriceChanges] = useState<Record<number, PriceChangeInfo>>({})
+  const [priceChangeNotes, setPriceChangeNotes] = useState<Record<number, boolean>>({})
+
+  // 항목별 비고
+  const [itemNotes, setItemNotes] = useState<Record<number, string>>({})
 
   // 임시 저장: parsedItems가 바뀔 때마다 DB에 자동 저장
   const saveDraft = async (items: ParsedItem[], cid: string) => {
@@ -97,6 +114,43 @@ export default function OrderParsePage() {
     setProducts(p || [])
   }
 
+  // 가격 변동 확인
+  const checkPriceChange = async (
+    pid: string,
+    cid: string,
+    currentPrice: number
+  ): Promise<PriceChangeInfo | null> => {
+    const { data: lastTx } = await supabase
+      .from('transactions')
+      .select('unit_price')
+      .eq('customer_id', cid)
+      .eq('product_id', pid)
+      .order('order_date', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!lastTx || lastTx.unit_price === currentPrice) return null
+
+    const { data: history } = await supabase
+      .from('price_history')
+      .select('created_at')
+      .eq('product_id', pid)
+      .in('change_type', ['consumer', 'tier'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    const changeDate = history
+      ? new Date(history.created_at).toLocaleDateString('ko-KR')
+      : '최근'
+
+    return {
+      date: changeDate,
+      oldPrice: lastTx.unit_price,
+      newPrice: currentPrice,
+    }
+  }
+
   const handleProductMatch = async (index: number, productId: string) => {
     if (productId === '__new__') {
       window.open('/products/new', '_blank')
@@ -136,6 +190,21 @@ export default function OrderParsePage() {
     })
     setProductSearches(prev => ({ ...prev, [index]: '' }))
     setEditingProduct(prev => ({ ...prev, [index]: false }))
+
+    // 가격 변동 확인
+    if (unitPrice) {
+      const change = await checkPriceChange(productId, customerId, unitPrice)
+      if (change) {
+        setPriceChanges(prev => ({ ...prev, [index]: change }))
+        setPriceChangeNotes(prev => ({ ...prev, [index]: true }))
+      } else {
+        setPriceChanges(prev => {
+          const updated = { ...prev }
+          delete updated[index]
+          return updated
+        })
+      }
+    }
   }
 
   const lookupPrice = async (
@@ -145,100 +214,17 @@ export default function OrderParsePage() {
   ): Promise<{ unitPrice: number | null; costPrice: number | null; source: string }> => {
     const customer = customers.find(c => c.id === cid)
     const tierId = customer?.default_tier_id || null
-
-    let costPrice: number | null = null
-    const { data: costTier } = await supabase
-      .from('price_tiers')
-      .select('id')
-      .eq('level', 0)
-      .single()
-
-    if (costTier) {
-      const { data: costData } = await supabase
-        .from('product_prices')
-        .select('price')
-        .eq('product_id', productId)
-        .eq('tier_id', costTier.id)
-        .single()
-      if (costData) costPrice = costData.price
-    }
-
-    // 특별단가
-    const { data: specialPrice } = await supabase
-      .from('customer_prices')
-      .select('special_price')
-      .eq('customer_id', cid)
-      .eq('product_id', productId)
-      .single()
-
-    if (specialPrice) {
-      return { unitPrice: specialPrice.special_price, costPrice, source: '특별단가' }
-    }
-
-    // 옵션별 가격
-    if (tierId && options) {
-      const { data: productOpts } = await supabase
-        .from('product_options')
-        .select('option_name, affects_price')
-        .eq('product_id', productId)
-
-      const affectsOpts = productOpts?.filter(o => o.affects_price) || []
-      for (const opt of affectsOpts) {
-        const val = options[opt.option_name]
-        if (val) {
-          const { data: optPrice } = await supabase
-            .from('option_prices')
-            .select('price')
-            .eq('product_id', productId)
-            .eq('option_name', opt.option_name)
-            .eq('option_value', val)
-            .eq('tier_id', tierId)
-            .single()
-          if (optPrice) {
-            return { unitPrice: optPrice.price, costPrice, source: `옵션별 가격 (${opt.option_name}: ${val})` }
-          }
-        }
-      }
-    }
-
-    // 등급 단가
-    if (tierId) {
-      const { data: tierPrice } = await supabase
-        .from('product_prices')
-        .select('price')
-        .eq('product_id', productId)
-        .eq('tier_id', tierId)
-        .single()
-      if (tierPrice) {
-        return { unitPrice: tierPrice.price, costPrice, source: '등급 단가' }
-      }
-    }
-
-    // 소비자가
-    const { data: consumerTier } = await supabase
-      .from('price_tiers')
-      .select('id')
-      .eq('level', 1)
-      .single()
-
-    if (consumerTier) {
-      const { data: consumerPrice } = await supabase
-        .from('product_prices')
-        .select('price')
-        .eq('product_id', productId)
-        .eq('tier_id', consumerTier.id)
-        .single()
-      if (consumerPrice) {
-        return { unitPrice: consumerPrice.price, costPrice, source: '소비자가' }
-      }
-    }
-
-    return { unitPrice: null, costPrice, source: '가격 미설정' }
+    return lookupPriceLib(supabase, {
+      productId,
+      customerId: cid,
+      customerTierId: tierId,
+      options,
+    })
   }
 
   const handleParse = async () => {
-    if (!customerId) return alert('거래처를 선택해주세요.')
-    if (!message.trim()) return alert('주문 메시지를 입력해주세요.')
+    if (!customerId) return toast.error('거래처를 선택해주세요.')
+    if (!message.trim()) return toast.error('주문 메시지를 입력해주세요.')
 
     // 중복 메시지 체크
     const { data: existing, error: checkError } = await supabase
@@ -250,7 +236,7 @@ export default function OrderParsePage() {
       .limit(1)
 
     if (checkError) {
-      alert('중복 체크 실패: ' + checkError.message + '\n코드: ' + checkError.code)
+      toast.error('중복 체크 실패: ' + checkError.message)
       return
     }
 
@@ -265,6 +251,9 @@ export default function OrderParsePage() {
     setLoading(true)
     setError('')
     setParsedItems([])
+    setPriceChanges({})
+    setPriceChangeNotes({})
+    setItemNotes({})
 
     try {
       const res = await fetch('/api/parse-order', {
@@ -283,7 +272,7 @@ export default function OrderParsePage() {
 
       // 메시지 저장 에러가 있으면 표시 (디버그용)
       if (data._msgSaveError) {
-        alert('메시지 저장 실패: ' + data._msgSaveError)
+        toast.error('메시지 저장 실패: ' + data._msgSaveError)
       }
 
       // 각 항목에 대해 가격 조회
@@ -317,6 +306,23 @@ export default function OrderParsePage() {
         })
       )
 
+      // 매칭된 상품별 가격 변동 확인
+      const newPriceChanges: Record<number, PriceChangeInfo> = {}
+      const newPriceChangeNotes: Record<number, boolean> = {}
+      for (let i = 0; i < itemsWithPrices.length; i++) {
+        const item = itemsWithPrices[i]
+        const price = item.looked_up_price || item.unit_price
+        if (item.product_id && price) {
+          const change = await checkPriceChange(item.product_id, customerId, price)
+          if (change) {
+            newPriceChanges[i] = change
+            newPriceChangeNotes[i] = true
+          }
+        }
+      }
+      setPriceChanges(newPriceChanges)
+      setPriceChangeNotes(newPriceChangeNotes)
+
       setParsedItems(itemsWithPrices)
       // 파싱 결과 임시 저장
       await saveDraft(itemsWithPrices, customerId)
@@ -340,6 +346,34 @@ export default function OrderParsePage() {
     setParsedItems(prev => {
       const updated = prev.filter((_, i) => i !== index)
       saveDraft(updated, customerId)
+      return updated
+    })
+    // 가격 변동 정보도 인덱스 재정렬
+    setPriceChanges(prev => {
+      const updated: Record<number, PriceChangeInfo> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const idx = parseInt(k)
+        if (idx < index) updated[idx] = v
+        else if (idx > index) updated[idx - 1] = v
+      })
+      return updated
+    })
+    setPriceChangeNotes(prev => {
+      const updated: Record<number, boolean> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const idx = parseInt(k)
+        if (idx < index) updated[idx] = v
+        else if (idx > index) updated[idx - 1] = v
+      })
+      return updated
+    })
+    setItemNotes(prev => {
+      const updated: Record<number, string> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const idx = parseInt(k)
+        if (idx < index) updated[idx] = v
+        else if (idx > index) updated[idx - 1] = v
+      })
       return updated
     })
   }
@@ -366,12 +400,46 @@ export default function OrderParsePage() {
 
     setSaving(true)
 
-    const newSaved: SavedItem[] = []
-    for (const item of validItems) {
+    // RPC용 데이터 준비
+    const rpcItems: {
+      customer_id: string
+      product_id: string
+      order_date: string
+      quantity: number
+      unit_price: number
+      cost_price: number | null
+      total: number
+      shipment_status: string
+      options: Record<string, string> | null
+      note: string | null
+    }[] = []
+    const itemMeta: { index: number; product_name: string }[] = []
+
+    let itemIndex = 0
+    for (const item of parsedItems) {
+      const currentIndex = itemIndex
+      itemIndex++
+
+      if (!item.product_id) continue
+
       const price = item.looked_up_price || item.unit_price || 0
       const total = item.quantity * price
 
-      const { data: saved, error } = await supabase.from('transactions').insert({
+      // 비고: 메시지 단가 차이 + 가격 변동 안내
+      const noteParts: string[] = []
+      if (item.unit_price && item.unit_price !== item.looked_up_price) {
+        noteParts.push(`메시지 단가: ${item.unit_price?.toLocaleString()}원`)
+      }
+      if (priceChanges[currentIndex] && priceChangeNotes[currentIndex]) {
+        const change = priceChanges[currentIndex]
+        noteParts.push(`${item.product_name} ${change.oldPrice.toLocaleString()} → ${change.newPrice.toLocaleString()}원 변경`)
+      }
+      const manualNote = (itemNotes[currentIndex] || '').trim()
+      if (manualNote) {
+        noteParts.push(manualNote)
+      }
+
+      rpcItems.push({
         customer_id: customerId,
         product_id: item.product_id,
         order_date: orderDate,
@@ -381,34 +449,42 @@ export default function OrderParsePage() {
         total,
         shipment_status: '대기',
         options: item.options,
-        note: item.unit_price && item.unit_price !== item.looked_up_price
-          ? `메시지 단가: ${item.unit_price?.toLocaleString()}원`
-          : null,
-      }).select('id').single()
-
-      if (error) {
-        alert(`저장 실패 (${item.product_name}): ${error.message}`)
-        break
-      }
-
-      newSaved.push({
-        id: saved.id,
-        product_name: item.product_name,
-        quantity: item.quantity,
-        unit_price: price,
-        total,
+        note: noteParts.length > 0 ? noteParts.join(' / ') : null,
       })
+      itemMeta.push({ index: rpcItems.length - 1, product_name: item.product_name })
     }
+
+    // RPC로 일괄 저장 (전체 성공 또는 전체 롤백)
+    const { data: results, error } = await supabase.rpc('bulk_insert_transactions', {
+      p_items: rpcItems,
+    })
+
+    if (error) {
+      toast.error('일괄 저장 실패: ' + error.message)
+      setSaving(false)
+      return
+    }
+
+    const newSaved: SavedItem[] = itemMeta.map((meta, i) => ({
+      id: (results as { id: string }[])[i]?.id || '',
+      product_name: meta.product_name,
+      quantity: rpcItems[meta.index].quantity,
+      unit_price: rpcItems[meta.index].unit_price,
+      total: rpcItems[meta.index].total,
+    }))
 
     setSavedItems(prev => [...prev, ...newSaved])
     setParsedItems([])
+    setPriceChanges({})
+    setPriceChangeNotes({})
+    setItemNotes({})
     setMessage('')
     // 일괄 저장 완료 → 임시 데이터 삭제
     await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
     setSaving(false)
   }
 
-  const formatPrice = (v: number | null) => v != null ? v.toLocaleString() : '-'
+  const formatPrice = displayPrice
 
   return (
     <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
@@ -476,6 +552,34 @@ export default function OrderParsePage() {
         {parsedItems.length > 0 && (
           <div className="mt-4">
             <h2 className="text-lg font-bold mb-3">분석 결과</h2>
+
+            {/* 가격 변동 알림 (변동 있는 항목만) */}
+            {Object.keys(priceChanges).length > 0 && (
+              <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-md space-y-2">
+                {Object.entries(priceChanges).map(([idx, change]) => {
+                  const i = parseInt(idx)
+                  const item = parsedItems[i]
+                  if (!item) return null
+                  return (
+                    <div key={idx}>
+                      <p className="text-sm text-amber-800">
+                        <span className="font-medium">{item.product_name}</span> — {change.date}부터 가격이 변경되었습니다 ({change.oldPrice.toLocaleString()} → {change.newPrice.toLocaleString()}원)
+                      </p>
+                      <label className="mt-1 flex items-center gap-2 text-sm text-amber-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={priceChangeNotes[i] ?? true}
+                          onChange={(e) => setPriceChangeNotes(prev => ({ ...prev, [i]: e.target.checked }))}
+                          className="rounded border-amber-300"
+                        />
+                        명세서에 표시
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -572,6 +676,16 @@ export default function OrderParsePage() {
                             item.price_source && (
                               <span className="text-xs text-indigo-500">{item.price_source}</span>
                             )
+                          )}
+                          {/* 비고 입력란 (매칭된 상품만) */}
+                          {!isUnmatched && (
+                            <input
+                              type="text"
+                              placeholder="비고"
+                              value={itemNotes[idx] || ''}
+                              onChange={(e) => setItemNotes(prev => ({ ...prev, [idx]: e.target.value }))}
+                              className="mt-1 block w-full px-2 py-1 text-xs border border-gray-200 rounded"
+                            />
                           )}
                         </td>
                         <td className="py-2 px-1 text-xs text-gray-500">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getName } from '@/lib/utils'
 import Link from 'next/link'
 
 type Invoice = {
@@ -65,11 +66,7 @@ export default function InvoicesPage() {
     setLoading(false)
   }
 
-  const getName = (field: { name: string } | { name: string }[] | null) => {
-    if (!field) return '-'
-    if (Array.isArray(field)) return field[0]?.name || '-'
-    return field.name
-  }
+
 
   const statusColor = (status: string) => {
     if (status === '입금완료') return 'bg-green-100 text-green-700'

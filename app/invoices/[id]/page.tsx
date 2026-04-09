@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { TIER_LEVEL, paramToString } from '@/lib/utils'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -49,8 +51,10 @@ type Payment = {
 }
 
 export default function InvoiceDetailPage() {
-  const { id } = useParams()
+  const { id: rawId } = useParams()
+  const id = paramToString(rawId as string | string[])
   const router = useRouter()
+  const toast = useToast()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
@@ -118,7 +122,7 @@ export default function InvoiceDetailPage() {
       const { data: consumerTier } = await supabase
         .from('price_tiers')
         .select('id')
-        .eq('level', 1)
+        .eq('level', TIER_LEVEL.CONSUMER)
         .single()
 
       if (consumerTier) {
@@ -179,20 +183,24 @@ export default function InvoiceDetailPage() {
   const handleDelete = async () => {
     if (!confirm('이 명세서를 삭제하시겠습니까? 거래 내역의 연결도 해제됩니다.')) return
 
-    await supabase
+    const { error: unlinkError } = await supabase
       .from('transactions')
       .update({ invoice_id: null })
       .eq('invoice_id', id)
 
-    await supabase.from('invoices').delete().eq('id', id)
+    if (unlinkError) return toast.error('거래 연결 해제 실패: ' + unlinkError.message)
+
+    const { error } = await supabase.from('invoices').delete().eq('id', id)
+    if (error) return toast.error('명세서 삭제 실패: ' + error.message)
     router.push('/invoices')
   }
 
   const handleStatusChange = async (newStatus: string) => {
-    await supabase
+    const { error } = await supabase
       .from('invoices')
       .update({ status: newStatus })
       .eq('id', id)
+    if (error) return toast.error('상태 변경 실패: ' + error.message)
     setInvoice((prev) => prev ? { ...prev, status: newStatus } : null)
   }
 

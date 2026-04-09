@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
 import Link from 'next/link'
 
 type AliasRow = {
@@ -13,6 +14,7 @@ type AliasRow = {
 
 export default function AliasesPage() {
   const [aliases, setAliases] = useState<AliasRow[]>([])
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -39,7 +41,8 @@ export default function AliasesPage() {
 
   const deleteAlias = async (aliasId: string, aliasText: string) => {
     if (!confirm(`별칭 "${aliasText}"을(를) 삭제하시겠습니까?`)) return
-    await supabase.from('product_aliases').delete().eq('id', aliasId)
+    const { error } = await supabase.from('product_aliases').delete().eq('id', aliasId)
+    if (error) return toast.error('삭제 실패: ' + error.message)
     loadAliases()
   }
 

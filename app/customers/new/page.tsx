@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPhone } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -12,6 +14,7 @@ type PriceTier = {
 
 export default function NewCustomerPage() {
   const router = useRouter()
+  const toast = useToast()
   const [name, setName] = useState('')
   const [representative, setRepresentative] = useState('')
   const [phone, setPhone] = useState('')
@@ -36,7 +39,7 @@ export default function NewCustomerPage() {
   }
 
   const handleSave = async () => {
-    if (!name) return alert('상호명을 입력해주세요.')
+    if (!name) return toast.error('상호명을 입력해주세요.')
     setLoading(true)
 
     const { error } = await supabase.from('customers').insert({
@@ -51,22 +54,11 @@ export default function NewCustomerPage() {
     })
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
       router.push('/customers')
     }
     setLoading(false)
-  }
-const formatPhone = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    if (nums.startsWith('02')) {
-      if (nums.length <= 2) return nums
-      if (nums.length <= 6) return `${nums.slice(0, 2)}-${nums.slice(2)}`
-      return `${nums.slice(0, 2)}-${nums.slice(2, 6)}-${nums.slice(6, 10)}`
-    }
-    if (nums.length <= 3) return nums
-    if (nums.length <= 7) return `${nums.slice(0, 3)}-${nums.slice(3)}`
-    return `${nums.slice(0, 3)}-${nums.slice(3, 7)}-${nums.slice(7, 11)}`
   }
   return (
     <div className="max-w-lg mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">

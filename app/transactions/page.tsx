@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getName } from '@/lib/utils'
 import Link from 'next/link'
 
 type Transaction = {
@@ -80,11 +81,7 @@ export default function TransactionsPage() {
 
   const totalPages = Math.ceil(totalCount / perPage)
 
-  const getName = (field: { name: string } | { name: string }[] | null) => {
-    if (!field) return '-'
-    if (Array.isArray(field)) return field[0]?.name || '-'
-    return field.name
-  }
+
 
   return (
     <div className="max-w-3xl mx-auto mt-10 p-6">

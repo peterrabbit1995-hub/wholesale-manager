@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPrice, rawPrice, paramToString } from '@/lib/utils'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -28,7 +30,9 @@ type OptionPrice = {
 }
 
 export default function ProductOptionsPage() {
-  const { id } = useParams()
+  const { id: rawId } = useParams()
+  const id = paramToString(rawId as string | string[])
+  const toast = useToast()
   const [productName, setProductName] = useState('')
   const [options, setOptions] = useState<ProductOption[]>([])
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
@@ -45,12 +49,6 @@ export default function ProductOptionsPage() {
   const [priceMatrix, setPriceMatrix] = useState<Record<string, Record<string, string>>>({})
 
   const [loading, setLoading] = useState(false)
-
-  const formatPrice = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    return nums ? Number(nums).toLocaleString() : ''
-  }
-  const rawPrice = (value: string) => value.replace(/,/g, '')
 
   useEffect(() => {
     loadData()
@@ -74,7 +72,7 @@ export default function ProductOptionsPage() {
   // 옵션 추가
   const handleAddOption = async () => {
     if (!newName.trim() || !newValues.trim()) {
-      return alert('옵션명과 옵션값을 모두 입력해주세요.')
+      return toast.error('옵션명과 옵션값을 모두 입력해주세요.')
     }
     setLoading(true)
 
@@ -87,7 +85,7 @@ export default function ProductOptionsPage() {
     })
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
       setNewName('')
       setNewValues('')
@@ -106,7 +104,7 @@ export default function ProductOptionsPage() {
       .eq('id', opt.id)
 
     if (error) {
-      alert('수정 실패: ' + error.message)
+      toast.error('수정 실패: ' + error.message)
     } else {
       setOptions(prev => prev.map(o => o.id === opt.id ? { ...o, [field]: value } : o))
     }
@@ -126,7 +124,7 @@ export default function ProductOptionsPage() {
     const { error } = await supabase.from('product_options').delete().eq('id', opt.id)
 
     if (error) {
-      alert('삭제 실패: ' + error.message)
+      toast.error('삭제 실패: ' + error.message)
     } else {
       await loadData()
     }
@@ -189,7 +187,7 @@ export default function ProductOptionsPage() {
     if (rows.length > 0) {
       const { error } = await supabase.from('option_prices').insert(rows)
       if (error) {
-        alert('가격 저장 실패: ' + error.message)
+        toast.error('가격 저장 실패: ' + error.message)
         setLoading(false)
         return
       }

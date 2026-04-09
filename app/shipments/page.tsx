@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { getName } from '@/lib/utils'
 import Link from 'next/link'
 
 type Transaction = {
@@ -38,6 +40,7 @@ type Tab = 'pending' | 'shipped'
 type EditField = 'tracking' | 'note'
 
 export default function ShipmentsPage() {
+  const toast = useToast()
   const [tab, setTab] = useState<Tab>('pending')
   const [pendingGroups, setPendingGroups] = useState<GroupedByCustomer<Transaction>[]>([])
   const [shippedGroups, setShippedGroups] = useState<GroupedByCustomer<ShippedTransaction>[]>([])
@@ -149,12 +152,6 @@ export default function ShipmentsPage() {
     return Array.from(map.values()).sort((a, b) => a.customerName.localeCompare(b.customerName))
   }
 
-  const getName = (field: { name: string } | { name: string }[] | null) => {
-    if (!field) return '-'
-    if (Array.isArray(field)) return field[0]?.name || '-'
-    return field.name
-  }
-
   // === 안내 메시지 생성 ===
   const buildNotifyText = (tx: ShippedTransaction) => {
     const productName = getName(tx.products)
@@ -260,8 +257,8 @@ export default function ShipmentsPage() {
 
   // === 대기 탭: 발송 처리 ===
   const handleShip = async () => {
-    if (pendingSelected.size === 0) return alert('발송할 거래를 선택해주세요.')
-    if (!courier.trim()) return alert('택배사를 입력해주세요.')
+    if (pendingSelected.size === 0) return toast.error('발송할 거래를 선택해주세요.')
+    if (!courier.trim()) return toast.error('택배사를 입력해주세요.')
     if (!confirm(`${pendingSelected.size}건을 발송 처리하시겠습니까?`)) return
 
     setSaving(true)
@@ -290,8 +287,8 @@ export default function ShipmentsPage() {
       await supabase.from('transactions').update({ shipment_status: '완료' }).eq('id', txId)
     }
 
-    if (failCount > 0) alert(`${pendingSelected.size - failCount}건 성공, ${failCount}건 실패`)
-    else alert(`${pendingSelected.size}건 발송 완료`)
+    if (failCount > 0) toast.error(`${pendingSelected.size - failCount}건 성공, ${failCount}건 실패`)
+    else toast.success(`${pendingSelected.size}건 발송 완료`)
 
     setTrackingNumber('')
     setNote('')
@@ -301,7 +298,7 @@ export default function ShipmentsPage() {
 
   // === 완료 탭: 일괄 취소 ===
   const handleBulkCancel = async () => {
-    if (shippedSelected.size === 0) return alert('취소할 거래를 선택해주세요.')
+    if (shippedSelected.size === 0) return toast.error('취소할 거래를 선택해주세요.')
     if (!confirm(`${shippedSelected.size}건의 발송을 취소하시겠습니까?`)) return
 
     setCancelling(true)
@@ -314,7 +311,7 @@ export default function ShipmentsPage() {
       await supabase.from('transactions').update({ shipment_status: '대기' }).eq('id', tx.id)
     }
 
-    alert(`${shippedSelected.size}건 발송 취소 완료`)
+    toast.success(`${shippedSelected.size}건 발송 취소 완료`)
     setCancelling(false)
     await loadAll()
   }
@@ -338,7 +335,7 @@ export default function ShipmentsPage() {
 
     const { error } = await supabase.from('shipments').update(updateData).eq('id', tx.shipment_id)
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
       return
     }
 

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPrice, rawPrice, TIER_LEVEL, paramToString } from '@/lib/utils'
 import { recordPriceChange } from '@/lib/priceHistory'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -22,6 +24,7 @@ type PriceHistoryItem = {
   change_type: string
   old_price: number
   new_price: number
+  action: string | null
   created_at: string
   tier_id: string | null
   customer_id: string | null
@@ -29,7 +32,9 @@ type PriceHistoryItem = {
 
 export default function ProductDetailPage() {
   const router = useRouter()
-  const { id } = useParams()
+  const toast = useToast()
+  const { id: rawId } = useParams()
+  const id = paramToString(rawId as string | string[])
   const [name, setName] = useState('')
   const [prices, setPrices] = useState<Record<string, string>>({})
   const [originalPrices, setOriginalPrices] = useState<Record<string, number>>({})
@@ -40,13 +45,6 @@ export default function ProductDetailPage() {
   const [history, setHistory] = useState<PriceHistoryItem[]>([])
   const [tierNames, setTierNames] = useState<Record<string, string>>({})
   const [customerNames, setCustomerNames] = useState<Record<string, string>>({})
-
-  const formatPrice = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    return nums ? Number(nums).toLocaleString() : ''
-  }
-
-  const rawPrice = (value: string) => value.replace(/,/g, '')
 
   useEffect(() => {
     loadData()
@@ -79,7 +77,7 @@ export default function ProductDetailPage() {
   const loadHistory = async () => {
     const { data } = await supabase
       .from('price_history')
-      .select('id, change_type, old_price, new_price, created_at, tier_id, customer_id')
+      .select('id, change_type, old_price, new_price, action, created_at, tier_id, customer_id')
       .eq('product_id', id)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -116,7 +114,12 @@ export default function ProductDetailPage() {
   const getHistoryLabel = (h: PriceHistoryItem): string => {
     if (h.change_type === 'consumer') return '소비자가'
     if (h.change_type === 'tier' && h.tier_id) return tierNames[h.tier_id] || '등급'
-    if (h.change_type === 'special' && h.customer_id) return `특별단가 (${customerNames[h.customer_id] || '거래처'})`
+    if (h.change_type === 'special' && h.customer_id) {
+      const name = customerNames[h.customer_id] || '거래처'
+      if (h.action === 'add') return `특별단가 설정 (${name})`
+      if (h.action === 'delete') return `특별단가 해제 (${name})`
+      return `특별단가 수정 (${name})`
+    }
     return h.change_type
   }
 
@@ -134,8 +137,8 @@ export default function ProductDetailPage() {
       alias: text,
     })
     if (error) {
-      if (error.code === '23505') alert('이미 등록된 별칭입니다.')
-      else alert('별칭 추가 실패: ' + error.message)
+      if (error.code === '23505') toast.error('이미 등록된 별칭입니다.')
+      else toast.error('별칭 추가 실패: ' + error.message)
       return
     }
     setNewAlias('')
@@ -144,14 +147,20 @@ export default function ProductDetailPage() {
 
   const deleteAlias = async (aliasId: string, aliasText: string) => {
     if (!confirm(`별칭 "${aliasText}"을(를) 삭제하시겠습니까?`)) return
-    await supabase.from('product_aliases').delete().eq('id', aliasId)
+    const { error } = await supabase.from('product_aliases').delete().eq('id', aliasId)
+    if (error) return toast.error('삭제 실패: ' + error.message)
     loadData()
   }
 
   const handleSave = async () => {
     setLoading(true)
 
-    await supabase.from('products').update({ name }).eq('id', id)
+    const { error: nameError } = await supabase.from('products').update({ name }).eq('id', id)
+    if (nameError) {
+      toast.error('상품명 저장 실패: ' + nameError.message)
+      setLoading(false)
+      return
+    }
 
     for (const tier of priceTiers) {
       const price = (prices[tier.id] || '').replace(/,/g, '')
@@ -187,7 +196,7 @@ export default function ProductDetailPage() {
           await recordPriceChange({
             supabase,
             product_id: id as string,
-            change_type: tier.level === 1 ? 'consumer' : 'tier',
+            change_type: tier.level === TIER_LEVEL.CONSUMER ? 'consumer' : 'tier',
             tier_id: tier.id,
             old_price: oldPrice,
             new_price: newPrice,
@@ -196,7 +205,7 @@ export default function ProductDetailPage() {
       }
     }
 
-    alert('저장되었습니다!')
+    toast.success('저장되었습니다!')
     setLoading(false)
     loadData()
     loadHistory()
@@ -204,8 +213,29 @@ export default function ProductDetailPage() {
 
   const handleDelete = async () => {
     if (!confirm('정말 삭제하시겠습니까?')) return
+
+    // 거래 기록이 있으면 삭제 차단
+    const { count } = await supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', id)
+
+    if (count && count > 0) {
+      toast.error(`이 상품에 거래 기록이 ${count}건 있어서 삭제할 수 없습니다.`)
+      return
+    }
+
+    // 관련 데이터 연쇄 삭제
+    await supabase.from('product_aliases').delete().eq('product_id', id)
     await supabase.from('product_prices').delete().eq('product_id', id)
-    await supabase.from('products').delete().eq('id', id)
+    await supabase.from('option_prices').delete().eq('product_id', id)
+    await supabase.from('product_options').delete().eq('product_id', id)
+    await supabase.from('customer_prices').delete().eq('product_id', id)
+    const { error } = await supabase.from('products').delete().eq('id', id)
+    if (error) {
+      toast.error('삭제 실패: ' + error.message)
+      return
+    }
     router.push('/products')
   }
 

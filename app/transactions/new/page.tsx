@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPrice, rawPrice } from '@/lib/utils'
+import { lookupPrice as lookupPriceLib } from '@/lib/lookupPrice'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -24,8 +27,15 @@ type SavedItem = {
   total: number
 }
 
+type PriceChangeInfo = {
+  date: string
+  oldPrice: number
+  newPrice: number
+}
+
 export default function NewTransactionPage() {
   const router = useRouter()
+  const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [customerId, setCustomerId] = useState('')
@@ -44,12 +54,11 @@ export default function NewTransactionPage() {
   const [savedList, setSavedList] = useState<SavedItem[]>([])
   const [productSearch, setProductSearch] = useState('')
 
-  const formatPrice = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    return nums ? Number(nums).toLocaleString() : ''
-  }
+  const [priceChangeInfo, setPriceChangeInfo] = useState<PriceChangeInfo | null>(null)
+  const [addPriceChangeToNote, setAddPriceChangeToNote] = useState(true)
 
-  const rawPrice = (value: string) => value.replace(/,/g, '')
+  // 가격 조회 경쟁 상태 방지용 카운터
+  const lookupCounterRef = useRef(0)
 
   // 임시 저장: savedList가 바뀔 때마다 DB에 자동 저장
   const saveDraft = async (items: SavedItem[], cid: string) => {
@@ -102,6 +111,44 @@ export default function NewTransactionPage() {
     setProducts(p || [])
   }
 
+  // 가격 변동 확인: 마지막 거래 단가와 현재 적용 단가 비교
+  const checkPriceChange = async (pid: string, cid: string, currentPrice: number) => {
+    setPriceChangeInfo(null)
+
+    // 해당 거래처의 이 상품 마지막 거래 단가 조회
+    const { data: lastTx } = await supabase
+      .from('transactions')
+      .select('unit_price')
+      .eq('customer_id', cid)
+      .eq('product_id', pid)
+      .order('order_date', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!lastTx || lastTx.unit_price === currentPrice) return
+
+    // 가격이 다르면 → price_history에서 변경 날짜 조회
+    const { data: history } = await supabase
+      .from('price_history')
+      .select('created_at')
+      .eq('product_id', pid)
+      .in('change_type', ['consumer', 'tier'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    const changeDate = history
+      ? new Date(history.created_at).toLocaleDateString('ko-KR')
+      : '최근'
+
+    setPriceChangeInfo({
+      date: changeDate,
+      oldPrice: lastTx.unit_price,
+      newPrice: currentPrice,
+    })
+    setAddPriceChangeToNote(true)
+  }
+
   const handleProductChange = async (pid: string) => {
     setProductId(pid)
     setSelectedOptions({})
@@ -109,6 +156,7 @@ export default function NewTransactionPage() {
     setUnitPrice('')
     setCostPrice('')
     setPriceSource('')
+    setPriceChangeInfo(null)
 
     if (!pid) return
 
@@ -120,9 +168,9 @@ export default function NewTransactionPage() {
 
     setProductOptions(opts || [])
 
-    if (!opts || opts.length === 0) {
-      await lookupPrice(pid, customerId, {})
-    }
+    // 옵션 유무와 관계없이 항상 단가 조회 (특별단가 → 등급단가 → 소비자가)
+    // 옵션 선택 시 옵션별 가격으로 덮어씀
+    await lookupPrice(pid, customerId, {})
   }
 
   const handleCustomerChange = async (cid: string) => {
@@ -131,6 +179,7 @@ export default function NewTransactionPage() {
     setUnitPrice('')
     setCostPrice('')
     setPriceSource('')
+    setPriceChangeInfo(null)
 
     if (!cid || !productId) return
     await lookupPrice(productId, cid, selectedOptions)
@@ -152,111 +201,45 @@ export default function NewTransactionPage() {
   ) => {
     if (!pid || !cid) return
 
+    const currentLookup = ++lookupCounterRef.current
+    const isStale = () => currentLookup !== lookupCounterRef.current
+
     const customer = customers.find((c) => c.id === cid)
     const tierId = customer?.default_tier_id || null
 
-    const { data: costTier } = await supabase
-      .from('price_tiers')
-      .select('id')
-      .eq('level', 0)
-      .single()
+    const result = await lookupPriceLib(supabase, {
+      productId: pid,
+      customerId: cid,
+      customerTierId: tierId,
+      options: opts,
+    })
 
-    if (costTier) {
-      const { data: costData } = await supabase
-        .from('product_prices')
-        .select('price')
-        .eq('product_id', pid)
-        .eq('tier_id', costTier.id)
-        .single()
+    if (isStale()) return
 
-      if (costData) setCostPrice(String(costData.price))
-    }
+    if (result.costPrice !== null) setCostPrice(String(result.costPrice))
 
-    const { data: specialPrice } = await supabase
-      .from('customer_prices')
-      .select('special_price')
-      .eq('customer_id', cid)
-      .eq('product_id', pid)
-      .single()
-
-    if (specialPrice) {
-      setUnitPrice(String(specialPrice.special_price))
-      setPriceSource('특별단가')
+    if (result.unitPrice !== null) {
+      setUnitPrice(String(result.unitPrice))
+      // 소비자가 표시는 기존대로 "(기본)" 붙임
+      setPriceSource(result.source === '소비자가' ? '소비자가 (기본)' : result.source)
+      await checkPriceChange(pid, cid, result.unitPrice)
       return
     }
 
-    if (tierId) {
-      const affectsOptions = productOptions.filter((o) => o.affects_price)
-      for (const opt of affectsOptions) {
-        const selectedVal = opts[opt.option_name]
-        if (selectedVal) {
-          const { data: optPrice } = await supabase
-            .from('option_prices')
-            .select('price')
-            .eq('product_id', pid)
-            .eq('option_name', opt.option_name)
-            .eq('option_value', selectedVal)
-            .eq('tier_id', tierId)
-            .single()
-
-          if (optPrice) {
-            setUnitPrice(String(optPrice.price))
-            setPriceSource(`옵션별 가격 (${opt.option_name}: ${selectedVal})`)
-            return
-          }
-        }
-      }
-    }
-
-    if (tierId) {
-      const { data: tierPrice } = await supabase
-        .from('product_prices')
-        .select('price')
-        .eq('product_id', pid)
-        .eq('tier_id', tierId)
-        .single()
-
-      if (tierPrice) {
-        setUnitPrice(String(tierPrice.price))
-        setPriceSource('등급 단가')
-        return
-      }
-    }
-
-    const { data: consumerTier } = await supabase
-      .from('price_tiers')
-      .select('id')
-      .eq('level', 1)
-      .single()
-
-    if (consumerTier) {
-      const { data: consumerPrice } = await supabase
-        .from('product_prices')
-        .select('price')
-        .eq('product_id', pid)
-        .eq('tier_id', consumerTier.id)
-        .single()
-
-      if (consumerPrice) {
-        setUnitPrice(String(consumerPrice.price))
-        setPriceSource('소비자가 (기본)')
-        return
-      }
-    }
-
     setPriceSource('가격 미설정')
+    setPriceChangeInfo(null)
   }
 
   const total = parseFloat(quantity || '0') * parseFloat(rawPrice(unitPrice) || '0')
 
   const handleSave = async () => {
     if (!customerId || !productId || !quantity || !unitPrice) {
-      return alert('거래처, 상품, 수량, 단가를 모두 입력해주세요.')
+      return toast.error('거래처, 상품, 수량, 단가를 모두 입력해주세요.')
     }
 
     for (const opt of productOptions) {
       if (opt.is_required && !selectedOptions[opt.option_name]) {
-        return alert(`"${opt.option_name}" 옵션을 선택해주세요.`)
+        return toast.error(`"${opt.option_name}" 옵션을 선택해주세요.`)
       }
     }
 
@@ -268,6 +251,14 @@ export default function NewTransactionPage() {
     )
     const optionsData = Object.keys(filteredOptions).length > 0 ? filteredOptions : null
 
+    // 비고에 가격 변동 정보 추가
+    let finalNote = note
+    if (priceChangeInfo && addPriceChangeToNote) {
+      const prodName = products.find(p => p.id === productId)?.name || ''
+      const changeText = `${prodName} ${priceChangeInfo.oldPrice.toLocaleString()} → ${priceChangeInfo.newPrice.toLocaleString()}원 변경`
+      finalNote = finalNote ? `${finalNote} / ${changeText}` : changeText
+    }
+
     const { data: saved, error } = await supabase.from('transactions').insert({
       customer_id: customerId,
       product_id: productId,
@@ -278,11 +269,11 @@ export default function NewTransactionPage() {
       total,
       shipment_status: '대기',
       options: optionsData,
-      note,
+      note: finalNote || null,
     }).select('id').single()
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
       const prodName = products.find(p => p.id === productId)?.name || ''
       const newItem = {
@@ -307,6 +298,7 @@ export default function NewTransactionPage() {
       setProductOptions([])
       setSelectedOptions({})
       setPriceSource('')
+      setPriceChangeInfo(null)
     }
     setLoading(false)
   }
@@ -315,7 +307,7 @@ export default function NewTransactionPage() {
     if (!confirm('이 거래를 삭제하시겠습니까?')) return
     const { error } = await supabase.from('transactions').delete().eq('id', itemId)
     if (error) {
-      alert('삭제 실패: ' + error.message)
+      toast.error('삭제 실패: ' + error.message)
     } else {
       setSavedList(prev => {
         const updated = prev.filter(i => i.id !== itemId)
@@ -405,6 +397,24 @@ export default function NewTransactionPage() {
             <p className="text-xs text-indigo-600 mt-1">적용: {priceSource}</p>
           )}
         </div>
+
+        {/* 가격 변동 알림 */}
+        {priceChangeInfo && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+            <p className="text-sm text-amber-800">
+              이 상품은 {priceChangeInfo.date}부터 가격이 변경되었습니다 ({priceChangeInfo.oldPrice.toLocaleString()} → {priceChangeInfo.newPrice.toLocaleString()}원)
+            </p>
+            <label className="mt-2 flex items-center gap-2 text-sm text-amber-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={addPriceChangeToNote}
+                onChange={(e) => setAddPriceChangeToNote(e.target.checked)}
+                className="rounded border-amber-300"
+              />
+              명세서에 표시
+            </label>
+          </div>
+        )}
 
         <div className="p-3 bg-gray-50 rounded-md">
           <div className="flex justify-between">

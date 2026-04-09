@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Anthropic from '@anthropic-ai/sdk'
+import { parseAiOrderResponse } from '@/lib/parseOrder'
 
 function createSupabaseServer(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   return createServerClient(
@@ -126,19 +127,13 @@ ${aliasListText}
       messages: [{ role: 'user', content: message }],
     })
 
-    if (!response.content || response.content.length === 0) {
-      return Response.json({ error: 'AI가 빈 응답을 반환했습니다.' }, { status: 500 })
+    const parseResult = parseAiOrderResponse(response.content)
+    if (!parseResult.ok) {
+      return Response.json(
+        { error: parseResult.error, ...(parseResult.raw ? { raw: parseResult.raw } : {}) },
+        { status: 500 }
+      )
     }
-
-    const text = response.content[0].type === 'text' ? response.content[0].text : ''
-
-    // JSON 파싱 시도
-    const jsonMatch = text.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) {
-      return Response.json({ error: 'AI 응답을 파싱할 수 없습니다.', raw: text }, { status: 500 })
-    }
-
-    const parsed = JSON.parse(jsonMatch[0])
 
     // 원문 메시지를 order_messages 테이블에 저장
     const { error: msgError } = await supabase.from('order_messages').insert({
@@ -148,7 +143,7 @@ ${aliasListText}
     })
 
     return Response.json({
-      items: parsed,
+      items: parseResult.items,
       customerName: customer?.name,
       _msgSaveError: msgError ? `${msgError.message} (${msgError.code})` : null,
     })

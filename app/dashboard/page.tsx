@@ -4,13 +4,36 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
+type DashboardStats = {
+  today_revenue: number
+  week_revenue: number
+  month_revenue: number
+  last_month_revenue: number
+  month_cost: number
+  month_margin: number
+  month_margin_rate: number
+}
+
 export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
   const [missingCount, setMissingCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadMissingCount()
+    loadAll()
   }, [])
+
+  const loadAll = async () => {
+    await Promise.all([loadStats(), loadMissingCount()])
+    setLoading(false)
+  }
+
+  const loadStats = async () => {
+    const { data } = await supabase.rpc('get_dashboard_stats')
+    if (data && data.length > 0) {
+      setStats(data[0] as DashboardStats)
+    }
+  }
 
   const loadMissingCount = async () => {
     const [{ data: products }, { data: tiers }, { data: prices }] = await Promise.all([
@@ -19,10 +42,7 @@ export default function DashboardPage() {
       supabase.from('product_prices').select('product_id, tier_id'),
     ])
 
-    if (!products || !tiers) {
-      setLoading(false)
-      return
-    }
+    if (!products || !tiers) return
 
     const priceSet = new Set(
       (prices || []).map((p) => `${p.product_id}::${p.tier_id}`)
@@ -34,14 +54,71 @@ export default function DashboardPage() {
         count++
       }
     }
-
     setMissingCount(count)
-    setLoading(false)
   }
 
+  // 지난 달 대비 변화 계산
+  const monthDiff = stats
+    ? stats.month_revenue - stats.last_month_revenue
+    : 0
+  const monthDiffPercent = stats && stats.last_month_revenue > 0
+    ? Math.round((monthDiff / stats.last_month_revenue) * 100)
+    : 0
+
   return (
-    <div className="max-w-lg mx-auto mt-10 p-6">
+    <div className="max-w-3xl mx-auto mt-10 p-6">
       <h1 className="text-2xl font-bold mb-6">도매상 관리 시스템</h1>
+
+      {/* 매출 요약 */}
+      {loading ? (
+        <p className="text-gray-400 mb-6">불러오는 중...</p>
+      ) : stats && (
+        <>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="p-4 bg-white rounded-lg shadow-sm border">
+              <p className="text-xs text-gray-500">오늘 매출</p>
+              <p className="text-lg font-bold mt-1">{Number(stats.today_revenue).toLocaleString()}원</p>
+            </div>
+            <div className="p-4 bg-white rounded-lg shadow-sm border">
+              <p className="text-xs text-gray-500">이번 주</p>
+              <p className="text-lg font-bold mt-1">{Number(stats.week_revenue).toLocaleString()}원</p>
+            </div>
+            <div className="p-4 bg-white rounded-lg shadow-sm border">
+              <p className="text-xs text-gray-500">이번 달</p>
+              <p className="text-lg font-bold mt-1">{Number(stats.month_revenue).toLocaleString()}원</p>
+              {stats.last_month_revenue > 0 && (
+                <p className={`text-xs mt-1 ${monthDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  지난 달 대비 {monthDiff >= 0 ? '+' : ''}{monthDiffPercent}%
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 마진 분석 */}
+          <div className="p-4 bg-white rounded-lg shadow-sm border mb-6">
+            <p className="text-sm font-medium text-gray-700 mb-3">이번 달 마진 분석</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-xs text-gray-500">매출</p>
+                <p className="text-base font-medium mt-1">{Number(stats.month_revenue).toLocaleString()}원</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">원가</p>
+                <p className="text-base font-medium mt-1 text-gray-600">{Number(stats.month_cost).toLocaleString()}원</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">마진</p>
+                <p className="text-base font-bold mt-1 text-indigo-600">
+                  {Number(stats.month_margin).toLocaleString()}원
+                  <span className="text-xs text-gray-500 ml-1">({Number(stats.month_margin_rate)}%)</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 메뉴 */}
       <div className="space-y-3">
         <Link
           href="/transactions"

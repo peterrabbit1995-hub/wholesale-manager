@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/lib/ToastContext'
+import { formatPrice, rawPrice, getName, TIER_LEVEL, paramToString } from '@/lib/utils'
 import { recordPriceChange } from '@/lib/priceHistory'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -24,13 +26,16 @@ type TierPrice = {
 }
 
 export default function CustomerPricesPage() {
-  const { id } = useParams()
+  const { id: rawId } = useParams()
+  const id = paramToString(rawId as string | string[])
+  const toast = useToast()
   const [customerName, setCustomerName] = useState('')
   const [tierName, setTierName] = useState('')
   const [tierId, setTierId] = useState('')
   const [customerPrices, setCustomerPrices] = useState<CustomerPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [tierPrices, setTierPrices] = useState<TierPrice[]>([])
+  const [consumerPrices, setConsumerPrices] = useState<TierPrice[]>([])
 
   const [selectedProductId, setSelectedProductId] = useState('')
   const [specialPrice, setSpecialPrice] = useState('')
@@ -38,12 +43,6 @@ export default function CustomerPricesPage() {
   const [editPrice, setEditPrice] = useState('')
   const [loading, setLoading] = useState(false)
   const [productSearch, setProductSearch] = useState('')
-
-  const formatPrice = (value: string) => {
-    const nums = value.replace(/[^0-9]/g, '')
-    return nums ? Number(nums).toLocaleString() : ''
-  }
-  const rawPrice = (value: string) => value.replace(/,/g, '')
 
   useEffect(() => {
     loadData()
@@ -92,9 +91,34 @@ export default function CustomerPricesPage() {
 
       setTierPrices(tp || [])
     }
+
+    // 소비자가 목록 (등급 단가 없을 때 대체용)
+    const { data: consumerTier } = await supabase
+      .from('price_tiers')
+      .select('id')
+      .eq('level', TIER_LEVEL.CONSUMER)
+      .single()
+
+    if (consumerTier) {
+      const { data: cp } = await supabase
+        .from('product_prices')
+        .select('product_id, price')
+        .eq('tier_id', consumerTier.id)
+
+      setConsumerPrices(cp || [])
+    }
   }
 
-  // 해당 상품의 등급 단가 찾기 (참고용)
+  // 해당 상품의 등급 단가 찾기 (없으면 소비자가)
+  const getEffectivePrice = (productId: string): number => {
+    const tierFound = tierPrices.find((p) => p.product_id === productId)
+    if (tierFound) return tierFound.price
+    const consumerFound = consumerPrices.find((p) => p.product_id === productId)
+    if (consumerFound) return consumerFound.price
+    return 0
+  }
+
+  // 해당 상품의 등급 단가 찾기 (참고용 표시)
   const getTierPrice = (productId: string): string => {
     const found = tierPrices.find((p) => p.product_id === productId)
     return found ? String(found.price) : '-'
@@ -105,35 +129,35 @@ export default function CustomerPricesPage() {
     (p) => !customerPrices.some((cp) => cp.product_id === p.id)
   )
 
-  const getProductName = (cp: CustomerPrice): string => {
-    if (!cp.products) return '-'
-    if (Array.isArray(cp.products)) return cp.products[0]?.name || '-'
-    return cp.products.name
-  }
+  const getProductName = (cp: CustomerPrice): string => getName(cp.products)
 
   // 추가
   const handleAdd = async () => {
     if (!selectedProductId || !specialPrice) {
-      return alert('상품과 특별단가를 모두 입력해주세요.')
+      return toast.error('상품과 특별단가를 모두 입력해주세요.')
     }
     setLoading(true)
+
+    const newPrice = parseFloat(rawPrice(specialPrice))
 
     const { error } = await supabase.from('customer_prices').insert({
       customer_id: id,
       product_id: selectedProductId,
-      special_price: parseFloat(rawPrice(specialPrice)),
+      special_price: newPrice,
     })
 
     if (error) {
-      alert('저장 실패: ' + error.message)
+      toast.error('저장 실패: ' + error.message)
     } else {
+      const effectivePrice = getEffectivePrice(selectedProductId)
       await recordPriceChange({
         supabase,
         product_id: selectedProductId,
         change_type: 'special',
         customer_id: id as string,
-        old_price: 0,
-        new_price: parseFloat(rawPrice(specialPrice)),
+        old_price: effectivePrice,
+        new_price: newPrice,
+        action: 'add',
       })
       setSelectedProductId('')
       setSpecialPrice('')
@@ -157,7 +181,7 @@ export default function CustomerPricesPage() {
       .eq('id', cpId)
 
     if (error) {
-      alert('수정 실패: ' + error.message)
+      toast.error('수정 실패: ' + error.message)
     } else {
       if (oldItem && oldItem.special_price !== newPrice) {
         await recordPriceChange({
@@ -167,6 +191,7 @@ export default function CustomerPricesPage() {
           customer_id: id as string,
           old_price: oldItem.special_price,
           new_price: newPrice,
+          action: 'update',
         })
       }
       setEditingId(null)
@@ -188,16 +213,18 @@ export default function CustomerPricesPage() {
       .eq('id', cpId)
 
     if (error) {
-      alert('삭제 실패: ' + error.message)
+      toast.error('삭제 실패: ' + error.message)
     } else {
       if (oldItem) {
+        const effectivePrice = getEffectivePrice(oldItem.product_id)
         await recordPriceChange({
           supabase,
           product_id: oldItem.product_id,
           change_type: 'special',
           customer_id: id as string,
           old_price: oldItem.special_price,
-          new_price: 0,
+          new_price: effectivePrice,
+          action: 'delete',
         })
       }
       await loadData()
