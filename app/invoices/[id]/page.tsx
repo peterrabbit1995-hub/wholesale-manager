@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { TIER_LEVEL, paramToString } from '@/lib/utils'
 import { useParams, useRouter } from 'next/navigation'
@@ -51,11 +52,20 @@ type Payment = {
 }
 
 export default function InvoiceDetailPage() {
+  return (
+    <AdminGuard>
+      <InvoiceDetailPageContent />
+    </AdminGuard>
+  )
+}
+
+function InvoiceDetailPageContent() {
   const { id: rawId } = useParams()
   const id = paramToString(rawId as string | string[])
   const router = useRouter()
   const toast = useToast()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
+  const [isActive, setIsActive] = useState(true)
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -103,6 +113,7 @@ export default function InvoiceDetailPage() {
       return
     }
     setInvoice(inv)
+    setIsActive(inv.is_active !== false)
 
     const [{ data: cust }, { data: comp }, { data: txs }] = await Promise.all([
       supabase.from('customers').select('name, representative, phone, business_number').eq('id', inv.customer_id).single(),
@@ -143,11 +154,12 @@ export default function InvoiceDetailPage() {
       }
     }
 
-    // 이전 미수금 계산
+    // 이전 미수금 계산 (비활성 명세서/입금은 제외)
     const { data: prevInvoices } = await supabase
       .from('invoices')
       .select('total_amount')
       .eq('customer_id', inv.customer_id)
+      .eq('is_active', true)
       .neq('id', inv.id)
       .lt('created_at', inv.created_at)
 
@@ -157,6 +169,7 @@ export default function InvoiceDetailPage() {
       .from('payments')
       .select('payment_date, amount, note')
       .eq('customer_id', inv.customer_id)
+      .eq('is_active', true)
       .order('payment_date', { ascending: false })
 
     const totalPayments = (payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
@@ -181,7 +194,7 @@ export default function InvoiceDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm('이 명세서를 삭제하시겠습니까? 거래 내역의 연결도 해제됩니다.')) return
+    if (!confirm('이 명세서를 삭제하시겠습니까?\n거래 내역의 연결이 해제되고, 명세서는 비활성 처리됩니다.\n복구는 Supabase 콘솔에서 가능합니다.')) return
 
     const { error: unlinkError } = await supabase
       .from('transactions')
@@ -190,7 +203,7 @@ export default function InvoiceDetailPage() {
 
     if (unlinkError) return toast.error('거래 연결 해제 실패: ' + unlinkError.message)
 
-    const { error } = await supabase.from('invoices').delete().eq('id', id)
+    const { error } = await supabase.from('invoices').update({ is_active: false }).eq('id', id)
     if (error) return toast.error('명세서 삭제 실패: ' + error.message)
     router.push('/invoices')
   }
@@ -225,7 +238,8 @@ export default function InvoiceDetailPage() {
           <select
             value={invoice.status}
             onChange={(e) => handleStatusChange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            disabled={!isActive}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="미발송">미발송</option>
             <option value="발송완료">발송완료</option>
@@ -243,14 +257,25 @@ export default function InvoiceDetailPage() {
           >
             PNG 이미지
           </button>
-          <button
-            onClick={handleDelete}
-            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm"
-          >
-            삭제
-          </button>
+          {isActive && (
+            <button
+              onClick={handleDelete}
+              className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm"
+            >
+              삭제
+            </button>
+          )}
         </div>
       </div>
+
+      {!isActive && (
+        <div className="no-print max-w-3xl mx-auto mt-3 px-6">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+            ⚠️ 이 명세서는 <strong>비활성(삭제) 상태</strong>입니다. 목록과 미수금 계산에서 제외됩니다.
+            복구하려면 Supabase 콘솔에서 <code className="px-1 bg-red-100 rounded">is_active</code>를 <code className="px-1 bg-red-100 rounded">true</code>로 변경하세요.
+          </div>
+        </div>
+      )}
 
       <div ref={printRef} className="print-area max-w-3xl mx-auto mt-4 mb-10 p-8 bg-white rounded-lg shadow-sm border">
         <h1 className="text-2xl font-bold text-center mb-8">거 래 명 세 서</h1>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPrice, rawPrice, paramToString } from '@/lib/utils'
 import { useRouter, useParams } from 'next/navigation'
@@ -11,6 +12,14 @@ type Customer = { id: string; name: string }
 type Product = { id: string; name: string }
 
 export default function TransactionDetailPage() {
+  return (
+    <AdminGuard>
+      <TransactionDetailPageContent />
+    </AdminGuard>
+  )
+}
+
+function TransactionDetailPageContent() {
   const router = useRouter()
   const toast = useToast()
   const { id: rawId } = useParams()
@@ -37,8 +46,8 @@ export default function TransactionDetailPage() {
   const loadData = async () => {
     const [{ data: t }, { data: c }, { data: p }] = await Promise.all([
       supabase.from('transactions').select('*').eq('id', id).single(),
-      supabase.from('customers').select('id, name').order('name'),
-      supabase.from('products').select('id, name').order('name'),
+      supabase.from('customers').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('products').select('id, name').eq('is_active', true).order('name'),
     ])
     if (t) {
       setCustomerId(t.customer_id || '')

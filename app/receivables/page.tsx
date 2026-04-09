@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 
 type CustomerReceivable = {
   customer_id: string
@@ -12,6 +13,14 @@ type CustomerReceivable = {
 }
 
 export default function ReceivablesPage() {
+  return (
+    <AdminGuard>
+      <ReceivablesPageContent />
+    </AdminGuard>
+  )
+}
+
+function ReceivablesPageContent() {
   const [receivables, setReceivables] = useState<CustomerReceivable[]>([])
   const [loading, setLoading] = useState(true)
 

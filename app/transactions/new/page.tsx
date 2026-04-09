@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPrice, rawPrice } from '@/lib/utils'
 import { lookupPrice as lookupPriceLib } from '@/lib/lookupPrice'
@@ -34,6 +35,14 @@ type PriceChangeInfo = {
 }
 
 export default function NewTransactionPage() {
+  return (
+    <AdminGuard>
+      <NewTransactionPageContent />
+    </AdminGuard>
+  )
+}
+
+function NewTransactionPageContent() {
   const router = useRouter()
   const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -104,8 +113,8 @@ export default function NewTransactionPage() {
 
   const loadData = async () => {
     const [{ data: c }, { data: p }] = await Promise.all([
-      supabase.from('customers').select('id, name, default_tier_id').order('name'),
-      supabase.from('products').select('id, name').order('name'),
+      supabase.from('customers').select('id, name, default_tier_id').eq('is_active', true).order('name'),
+      supabase.from('products').select('id, name').eq('is_active', true).order('name'),
     ])
     setCustomers(c || [])
     setProducts(p || [])

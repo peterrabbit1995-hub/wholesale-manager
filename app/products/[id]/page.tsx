@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPrice, rawPrice, TIER_LEVEL, paramToString } from '@/lib/utils'
 import { recordPriceChange } from '@/lib/priceHistory'
@@ -31,6 +32,14 @@ type PriceHistoryItem = {
 }
 
 export default function ProductDetailPage() {
+  return (
+    <AdminGuard>
+      <ProductDetailPageContent />
+    </AdminGuard>
+  )
+}
+
+function ProductDetailPageContent() {
   const router = useRouter()
   const toast = useToast()
   const { id: rawId } = useParams()
@@ -45,6 +54,7 @@ export default function ProductDetailPage() {
   const [history, setHistory] = useState<PriceHistoryItem[]>([])
   const [tierNames, setTierNames] = useState<Record<string, string>>({})
   const [customerNames, setCustomerNames] = useState<Record<string, string>>({})
+  const [isActive, setIsActive] = useState(true)
 
   useEffect(() => {
     loadData()
@@ -60,7 +70,10 @@ export default function ProductDetailPage() {
         supabase.from('product_aliases').select('id, alias').eq('product_id', id).order('alias'),
       ])
 
-    if (product) setName(product.name || '')
+    if (product) {
+      setName(product.name || '')
+      setIsActive(product.is_active !== false)
+    }
     setPriceTiers(tiers || [])
     setAliases(aliasData || [])
 
@@ -212,26 +225,9 @@ export default function ProductDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm('정말 삭제하시겠습니까?')) return
+    if (!confirm('정말 삭제하시겠습니까?\n(목록에서 숨겨지며, 가격/별칭/옵션은 그대로 보존됩니다. 복구는 Supabase 콘솔에서 가능합니다)')) return
 
-    // 거래 기록이 있으면 삭제 차단
-    const { count } = await supabase
-      .from('transactions')
-      .select('id', { count: 'exact', head: true })
-      .eq('product_id', id)
-
-    if (count && count > 0) {
-      toast.error(`이 상품에 거래 기록이 ${count}건 있어서 삭제할 수 없습니다.`)
-      return
-    }
-
-    // 관련 데이터 연쇄 삭제
-    await supabase.from('product_aliases').delete().eq('product_id', id)
-    await supabase.from('product_prices').delete().eq('product_id', id)
-    await supabase.from('option_prices').delete().eq('product_id', id)
-    await supabase.from('product_options').delete().eq('product_id', id)
-    await supabase.from('customer_prices').delete().eq('product_id', id)
-    const { error } = await supabase.from('products').delete().eq('id', id)
+    const { error } = await supabase.from('products').update({ is_active: false }).eq('id', id)
     if (error) {
       toast.error('삭제 실패: ' + error.message)
       return
@@ -245,6 +241,12 @@ export default function ProductDetailPage() {
         <Link href="/products" className="text-gray-500 mr-3">&larr; 목록</Link>
         <h1 className="text-2xl font-bold">상품 수정</h1>
       </div>
+      {!isActive && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          ⚠️ 이 상품은 <strong>비활성(삭제) 상태</strong>입니다. 목록과 선택 메뉴에 표시되지 않습니다.
+          복구하려면 Supabase 콘솔에서 <code className="px-1 bg-red-100 rounded">is_active</code>를 <code className="px-1 bg-red-100 rounded">true</code>로 변경하세요.
+        </div>
+      )}
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700">상품명 *</label>
@@ -283,23 +285,33 @@ export default function ProductDetailPage() {
         </div>
         <button
           onClick={handleSave}
-          disabled={loading}
-          className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+          disabled={loading || !isActive}
+          className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? '저장 중...' : '저장하기'}
         </button>
-        <Link
-          href={`/products/${id}/options`}
-          className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
-        >
-          옵션 설정
-        </Link>
-        <button
-          onClick={handleDelete}
-          className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600"
-        >
-          삭제
-        </button>
+        {isActive ? (
+          <Link
+            href={`/products/${id}/options`}
+            className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
+          >
+            옵션 설정
+          </Link>
+        ) : (
+          <button disabled
+            className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md text-center opacity-50 cursor-not-allowed"
+          >
+            옵션 설정
+          </button>
+        )}
+        {isActive && (
+          <button
+            onClick={handleDelete}
+            className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600"
+          >
+            삭제
+          </button>
+        )}
 
         {/* 별칭 관리 */}
         <div className="mt-6 pt-6 border-t border-gray-200">

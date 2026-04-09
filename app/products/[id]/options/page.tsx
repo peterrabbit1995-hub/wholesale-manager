@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPrice, rawPrice, paramToString } from '@/lib/utils'
 import { useParams } from 'next/navigation'
@@ -30,6 +31,14 @@ type OptionPrice = {
 }
 
 export default function ProductOptionsPage() {
+  return (
+    <AdminGuard>
+      <ProductOptionsPageContent />
+    </AdminGuard>
+  )
+}
+
+function ProductOptionsPageContent() {
   const { id: rawId } = useParams()
   const id = paramToString(rawId as string | string[])
   const toast = useToast()

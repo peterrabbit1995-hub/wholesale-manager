@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import Link from 'next/link'
 
@@ -13,6 +14,14 @@ type AliasRow = {
 }
 
 export default function AliasesPage() {
+  return (
+    <AdminGuard>
+      <AliasesPageContent />
+    </AdminGuard>
+  )
+}
+
+function AliasesPageContent() {
   const [aliases, setAliases] = useState<AliasRow[]>([])
   const toast = useToast()
   const [search, setSearch] = useState('')

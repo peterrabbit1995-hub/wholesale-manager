@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -21,6 +22,14 @@ type Transaction = {
 }
 
 export default function NewInvoicePage() {
+  return (
+    <AdminGuard>
+      <NewInvoicePageContent />
+    </AdminGuard>
+  )
+}
+
+function NewInvoicePageContent() {
   const router = useRouter()
   const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -41,6 +50,7 @@ export default function NewInvoicePage() {
     const { data } = await supabase
       .from('customers')
       .select('id, name')
+      .eq('is_active', true)
       .order('name')
     setCustomers(data || [])
   }

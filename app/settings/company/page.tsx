@@ -2,9 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { formatPhone } from '@/lib/utils'
 
 export default function CompanySettingsPage() {
+  return (
+    <AdminGuard>
+      <CompanySettingsPageContent />
+    </AdminGuard>
+  )
+}
+
+function CompanySettingsPageContent() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [bankAccount, setBankAccount] = useState('')

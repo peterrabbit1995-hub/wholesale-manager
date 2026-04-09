@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPhone } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -13,6 +14,14 @@ type PriceTier = {
 }
 
 export default function NewCustomerPage() {
+  return (
+    <AdminGuard>
+      <NewCustomerPageContent />
+    </AdminGuard>
+  )
+}
+
+function NewCustomerPageContent() {
   const router = useRouter()
   const toast = useToast()
   const [name, setName] = useState('')

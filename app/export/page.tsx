@@ -2,11 +2,20 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import * as XLSX from 'xlsx'
 import Link from 'next/link'
 
 export default function ExportPage() {
+  return (
+    <AdminGuard>
+      <ExportPageContent />
+    </AdminGuard>
+  )
+}
+
+function ExportPageContent() {
   const toast = useToast()
   const [loading, setLoading] = useState<string | null>(null)
   const today = new Date().toISOString().split('T')[0]
@@ -28,7 +37,7 @@ export default function ExportPage() {
     try {
       // 상품 + 등급별 가격 + 판매 통계
       const [{ data: products }, { data: tiers }, { data: prices }, { data: stats }] = await Promise.all([
-        supabase.from('products').select('id, name, created_at').order('name'),
+        supabase.from('products').select('id, name, created_at').eq('is_active', true).order('name'),
         supabase.from('price_tiers').select('id, name, level').order('level'),
         supabase.from('product_prices').select('product_id, tier_id, price'),
         supabase.rpc('get_product_stats'),

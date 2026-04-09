@@ -5,26 +5,39 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { useRole } from '@/lib/useRole'
 
-const menuItems = [
-  { href: '/dashboard', label: '홈' },
-  { href: '/transactions', label: '거래' },
-  { href: '/orders/parse', label: '주문인식' },
-  { href: '/shipments', label: '발송' },
-  { href: '/invoices', label: '명세서' },
-  { href: '/payments', label: '입금' },
-  { href: '/receivables', label: '미수금' },
-  { href: '/customers', label: '거래처' },
-  { href: '/products', label: '상품' },
-  { href: '/aliases', label: '별칭' },
-  { href: '/export', label: '내보내기' },
-  { href: '/settings/company', label: '설정' },
+// adminOnly: true 이면 관리자에게만 보임. false 이면 직원에게도 보임.
+const allMenuItems = [
+  { href: '/dashboard', label: '홈', adminOnly: true },
+  { href: '/transactions', label: '거래', adminOnly: true },
+  { href: '/orders/parse', label: '주문인식', adminOnly: true },
+  { href: '/shipments', label: '발송', adminOnly: false },
+  { href: '/invoices', label: '명세서', adminOnly: true },
+  { href: '/payments', label: '입금', adminOnly: true },
+  { href: '/receivables', label: '미수금', adminOnly: true },
+  { href: '/customers', label: '거래처', adminOnly: true },
+  { href: '/products', label: '상품', adminOnly: true },
+  { href: '/aliases', label: '별칭', adminOnly: true },
+  { href: '/export', label: '내보내기', adminOnly: true },
+  { href: '/settings/company', label: '설정', adminOnly: true },
 ]
 
 export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
+  const { role } = useRole()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // 역할에 따라 메뉴 필터링
+  // - admin : 전체
+  // - staff : adminOnly=false 만 (= 발송)
+  // - null  : 아무것도 안 보임 (로그아웃 버튼만 남음)
+  const menuItems = allMenuItems.filter((item) => {
+    if (role === 'admin') return true
+    if (role === 'staff') return !item.adminOnly
+    return false
+  })
 
   // 페이지 이동 시 모바일 메뉴 자동 닫기
   useEffect(() => {

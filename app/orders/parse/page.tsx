@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { displayPrice } from '@/lib/utils'
 import { lookupPrice as lookupPriceLib } from '@/lib/lookupPrice'
@@ -39,6 +40,14 @@ type SavedItem = {
 }
 
 export default function OrderParsePage() {
+  return (
+    <AdminGuard>
+      <OrderParsePageContent />
+    </AdminGuard>
+  )
+}
+
+function OrderParsePageContent() {
   const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -64,12 +73,16 @@ export default function OrderParsePage() {
 
   // 임시 저장: parsedItems가 바뀔 때마다 DB에 자동 저장
   const saveDraft = async (items: ParsedItem[], cid: string) => {
-    if (items.length === 0) {
-      await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
-      return
-    }
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    if (items.length === 0) {
+      await supabase
+        .from('draft_data')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('page_key', 'orders/parse')
+      return
+    }
     await supabase.from('draft_data').upsert({
       user_id: user.id,
       page_key: 'orders/parse',
@@ -96,7 +109,14 @@ export default function OrderParsePage() {
         if (draft.customer_id) setCustomerId(draft.customer_id)
         if (draft.data.orderDate) setOrderDate(draft.data.orderDate)
       } else {
-        await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await supabase
+            .from('draft_data')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('page_key', 'orders/parse')
+        }
       }
     }
   }
@@ -107,8 +127,8 @@ export default function OrderParsePage() {
 
   const loadData = async () => {
     const [{ data: c }, { data: p }] = await Promise.all([
-      supabase.from('customers').select('id, name, default_tier_id').order('name'),
-      supabase.from('products').select('id, name').order('name'),
+      supabase.from('customers').select('id, name, default_tier_id').eq('is_active', true).order('name'),
+      supabase.from('products').select('id, name').eq('is_active', true).order('name'),
     ])
     setCustomers(c || [])
     setProducts(p || [])
@@ -465,6 +485,18 @@ export default function OrderParsePage() {
       return
     }
 
+    // 일괄 저장 완료 → 임시 데이터 먼저 삭제 (option C: 상태 초기화 전에 delete)
+    // 이후 setParsedItems([]) 등에서 saveDraft가 다시 호출되어도 items.length===0 경로로
+    // 또 한 번 delete를 보내므로, 떠다니는 fire-and-forget upsert가 도착해도 결국 삭제됨
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase
+        .from('draft_data')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('page_key', 'orders/parse')
+    }
+
     const newSaved: SavedItem[] = itemMeta.map((meta, i) => ({
       id: (results as { id: string }[])[i]?.id || '',
       product_name: meta.product_name,
@@ -479,8 +511,6 @@ export default function OrderParsePage() {
     setPriceChangeNotes({})
     setItemNotes({})
     setMessage('')
-    // 일괄 저장 완료 → 임시 데이터 삭제
-    await supabase.from('draft_data').delete().eq('page_key', 'orders/parse')
     setSaving(false)
   }
 

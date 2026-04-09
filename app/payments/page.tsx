@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPrice, rawPrice, getName } from '@/lib/utils'
 
@@ -15,6 +16,14 @@ type Payment = {
 }
 
 export default function PaymentsPage() {
+  return (
+    <AdminGuard>
+      <PaymentsPageContent />
+    </AdminGuard>
+  )
+}
+
+function PaymentsPageContent() {
   const toast = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
@@ -33,9 +42,10 @@ export default function PaymentsPage() {
 
   const loadData = async () => {
     const [{ data: c }, { data: p }] = await Promise.all([
-      supabase.from('customers').select('id, name').order('name'),
+      supabase.from('customers').select('id, name').eq('is_active', true).order('name'),
       supabase.from('payments')
         .select('id, payment_date, amount, note, customers(name)')
+        .eq('is_active', true)
         .order('payment_date', { ascending: false })
         .limit(50),
     ])
@@ -71,8 +81,8 @@ export default function PaymentsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('이 입금 기록을 삭제하시겠습니까?')) return
-    const { error } = await supabase.from('payments').delete().eq('id', id)
+    if (!confirm('이 입금 기록을 삭제하시겠습니까?\n(목록과 미수금 계산에서 제외됩니다. 복구는 Supabase 콘솔에서 가능합니다)')) return
+    const { error } = await supabase.from('payments').update({ is_active: false }).eq('id', id)
     if (error) {
       toast.error('삭제 실패: ' + error.message)
     } else {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import Link from 'next/link'
 
 type DashboardStats = {
@@ -16,6 +17,14 @@ type DashboardStats = {
 }
 
 export default function DashboardPage() {
+  return (
+    <AdminGuard>
+      <DashboardPageContent />
+    </AdminGuard>
+  )
+}
+
+function DashboardPageContent() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [missingCount, setMissingCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -38,7 +47,7 @@ export default function DashboardPage() {
 
   const loadMissingCount = async () => {
     const [{ data: products }, { data: tiers }, { data: prices }] = await Promise.all([
-      supabase.from('products').select('id'),
+      supabase.from('products').select('id').eq('is_active', true),
       supabase.from('price_tiers').select('id'),
       supabase.from('product_prices').select('product_id, tier_id'),
     ])

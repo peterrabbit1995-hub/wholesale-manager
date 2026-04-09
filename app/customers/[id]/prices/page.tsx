@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPrice, rawPrice, getName, TIER_LEVEL, paramToString } from '@/lib/utils'
 import { recordPriceChange } from '@/lib/priceHistory'
@@ -26,6 +27,14 @@ type TierPrice = {
 }
 
 export default function CustomerPricesPage() {
+  return (
+    <AdminGuard>
+      <CustomerPricesPageContent />
+    </AdminGuard>
+  )
+}
+
+function CustomerPricesPageContent() {
   const { id: rawId } = useParams()
   const id = paramToString(rawId as string | string[])
   const toast = useToast()
@@ -74,10 +83,11 @@ export default function CustomerPricesPage() {
 
     setCustomerPrices(prices || [])
 
-    // 전체 상품 목록
+    // 전체 상품 목록 (활성 상품만)
     const { data: prods } = await supabase
       .from('products')
       .select('id, name')
+      .eq('is_active', true)
       .order('name')
 
     setProducts(prods || [])

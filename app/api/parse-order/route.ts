@@ -42,10 +42,11 @@ export async function POST(request: Request) {
     return Response.json({ error: 'ANTHROPIC_API_KEY가 설정되지 않았습니다.' }, { status: 500 })
   }
 
-  // 상품 목록 조회
+  // 상품 목록 조회 (활성 상품만)
   const { data: products } = await supabase
     .from('products')
     .select('id, name')
+    .eq('is_active', true)
     .order('name')
 
   if (!products || products.length === 0) {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { useToast } from '@/lib/ToastContext'
 import { formatPhone, paramToString } from '@/lib/utils'
 import { useRouter, useParams } from 'next/navigation'
@@ -23,6 +24,14 @@ type PriceHistoryItem = {
 }
 
 export default function CustomerDetailPage() {
+  return (
+    <AdminGuard>
+      <CustomerDetailPageContent />
+    </AdminGuard>
+  )
+}
+
+function CustomerDetailPageContent() {
   const router = useRouter()
   const toast = useToast()
   const { id: rawId } = useParams()
@@ -37,6 +46,7 @@ export default function CustomerDetailPage() {
   const [defaultTierId, setDefaultTierId] = useState('')
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([])
   const [loading, setLoading] = useState(false)
+  const [isActive, setIsActive] = useState(true)
   const [priceHistory, setPriceHistory] = useState<PriceHistoryItem[]>([])
 
   useEffect(() => {
@@ -58,6 +68,7 @@ export default function CustomerDetailPage() {
       setAddress(customer.address || '')
       setBankAccount(customer.bank_account || '')
       setDefaultTierId(customer.default_tier_id || '')
+      setIsActive(customer.is_active !== false)
     }
     setPriceTiers(tiers || [])
   }
@@ -102,8 +113,8 @@ export default function CustomerDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm('정말 삭제하시겠습니까?')) return
-    const { error } = await supabase.from('customers').delete().eq('id', id)
+    if (!confirm('정말 삭제하시겠습니까?\n(목록에서 숨겨지며, 복구는 Supabase 콘솔에서 가능합니다)')) return
+    const { error } = await supabase.from('customers').update({ is_active: false }).eq('id', id)
     if (error) {
       toast.error('삭제 실패: ' + error.message)
     } else {
@@ -129,6 +140,12 @@ export default function CustomerDetailPage() {
         <Link href="/customers" className="text-gray-500 mr-3">&larr; 목록</Link>
         <h1 className="text-2xl font-bold">거래처 수정</h1>
       </div>
+      {!isActive && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
+          ⚠️ 이 거래처는 <strong>비활성(삭제) 상태</strong>입니다. 목록과 선택 메뉴에 표시되지 않습니다.
+          복구하려면 Supabase 콘솔에서 <code className="px-1 bg-red-100 rounded">is_active</code>를 <code className="px-1 bg-red-100 rounded">true</code>로 변경하세요.
+        </div>
+      )}
       <div className="space-y-4">
         {[
           { label: '상호명 *', value: name, setter: setName },
@@ -162,20 +179,29 @@ export default function CustomerDetailPage() {
             ))}
           </select>
         </div>
-        <button onClick={handleSave} disabled={loading}
-          className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50">
+        <button onClick={handleSave} disabled={loading || !isActive}
+          className="w-full py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
           {loading ? '저장 중...' : '저장하기'}
         </button>
-        <Link
-          href={`/customers/${id}/prices`}
-          className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
-        >
-          특별단가 설정
-        </Link>
-        <button onClick={handleDelete}
-          className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600">
-          삭제
-        </button>
+        {isActive ? (
+          <Link
+            href={`/customers/${id}/prices`}
+            className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md hover:bg-amber-600 text-center"
+          >
+            특별단가 설정
+          </Link>
+        ) : (
+          <button disabled
+            className="block w-full py-2 px-4 bg-amber-500 text-white rounded-md text-center opacity-50 cursor-not-allowed">
+            특별단가 설정
+          </button>
+        )}
+        {isActive && (
+          <button onClick={handleDelete}
+            className="w-full py-2 px-4 bg-red-500 text-white rounded-md hover:bg-red-600">
+            삭제
+          </button>
+        )}
 
         {/* 특별단가 변동 이력 */}
         <div className="mt-6 pt-6 border-t border-gray-200">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import Link from 'next/link'
 
 type Customer = {
@@ -12,6 +13,14 @@ type Customer = {
 }
 
 export default function CustomersPage() {
+  return (
+    <AdminGuard>
+      <CustomersPageContent />
+    </AdminGuard>
+  )
+}
+
+function CustomersPageContent() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -24,6 +33,7 @@ export default function CustomersPage() {
     const { data } = await supabase
       .from('customers')
       .select('id, name, phone, price_tiers(name)')
+      .eq('is_active', true)
       .order('name')
     setCustomers(data || [])
     setLoading(false)

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import { getName } from '@/lib/utils'
 import Link from 'next/link'
 
@@ -18,6 +19,14 @@ type Invoice = {
 type ShipmentStatus = '배송전' | '부분배송' | '배송완료'
 
 export default function InvoicesPage() {
+  return (
+    <AdminGuard>
+      <InvoicesPageContent />
+    </AdminGuard>
+  )
+}
+
+function InvoicesPageContent() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [shipmentStatuses, setShipmentStatuses] = useState<Record<string, ShipmentStatus>>({})
   const [loading, setLoading] = useState(true)
@@ -30,6 +39,7 @@ export default function InvoicesPage() {
     const { data } = await supabase
       .from('invoices')
       .select('id, issue_date, period_start, period_end, total_amount, status, customers(name)')
+      .eq('is_active', true)
       .order('issue_date', { ascending: false })
 
     const invs = data || []

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AdminGuard from '@/components/AdminGuard'
 import Link from 'next/link'
 
 type Product = {
@@ -10,6 +11,14 @@ type Product = {
 }
 
 export default function ProductsPage() {
+  return (
+    <AdminGuard>
+      <ProductsPageContent />
+    </AdminGuard>
+  )
+}
+
+function ProductsPageContent() {
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -24,7 +33,7 @@ export default function ProductsPage() {
 
   const loadProducts = async () => {
     const [{ data: productsData }, { data: tiers }, { data: prices }] = await Promise.all([
-      supabase.from('products').select('id, name').order('name'),
+      supabase.from('products').select('id, name').eq('is_active', true).order('name'),
       supabase.from('price_tiers').select('id'),
       supabase.from('product_prices').select('product_id, tier_id'),
     ])
