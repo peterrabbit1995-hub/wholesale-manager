@@ -9,6 +9,7 @@ export default function CompanySettingsPage() {
   const [phone, setPhone] = useState('')
   const [bankAccount, setBankAccount] = useState('')
   const [businessNumber, setBusinessNumber] = useState('')
+  const [marginStartDate, setMarginStartDate] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   useEffect(() => {
@@ -26,6 +27,7 @@ export default function CompanySettingsPage() {
       setPhone(data.phone || '')
       setBankAccount(data.bank_account || '')
       setBusinessNumber(data.business_number || '')
+      setMarginStartDate(data.margin_start_date || '')
     }
   }
 
@@ -38,15 +40,23 @@ export default function CompanySettingsPage() {
       .select('id')
       .single()
 
+    const payload = {
+      name,
+      phone,
+      bank_account: bankAccount,
+      business_number: businessNumber,
+      margin_start_date: marginStartDate || null,
+    }
+
     if (existing) {
       await supabase
         .from('company_info')
-        .update({ name, phone, bank_account: bankAccount, business_number: businessNumber })
+        .update(payload)
         .eq('id', existing.id)
     } else {
       await supabase
         .from('company_info')
-        .insert({ name, phone, bank_account: bankAccount, business_number: businessNumber })
+        .insert(payload)
     }
 
     setMessage('저장되었습니다!')
@@ -92,6 +102,18 @@ export default function CompanySettingsPage() {
             onChange={(e) => setBusinessNumber(e.target.value)}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">마진 계산 시작일</label>
+          <input
+            type="date"
+            value={marginStartDate}
+            onChange={(e) => setMarginStartDate(e.target.value)}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            대시보드 마진 분석은 이 날짜 이후의 거래만 사용합니다. 모든 상품의 원가 입력이 끝난 날짜를 지정해주세요.
+          </p>
         </div>
         {message && <div className="text-green-600 text-sm">{message}</div>}
         <button

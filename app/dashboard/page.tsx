@@ -12,6 +12,7 @@ type DashboardStats = {
   month_cost: number
   month_margin: number
   month_margin_rate: number
+  margin_start_date: string | null
 }
 
 export default function DashboardPage() {
@@ -96,8 +97,25 @@ export default function DashboardPage() {
 
           {/* 마진 분석 */}
           <div className="p-4 bg-white rounded-lg shadow-sm border mb-6">
-            <p className="text-sm font-medium text-gray-700 mb-3">이번 달 마진 분석</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-700">이번 달 마진 분석</p>
+              {stats.margin_start_date && (
+                <p className="text-xs text-gray-400">{stats.margin_start_date} 이후 거래 기준</p>
+              )}
+            </div>
+            {!stats.margin_start_date ? (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-700">
+                마진 계산 시작일이 설정되지 않았습니다. 원가 입력이 모두 끝난 후{' '}
+                <Link href="/settings/company" className="underline font-medium">
+                  회사 정보 설정
+                </Link>
+                에서 시작일을 지정해주세요.
+                <p className="text-xs mt-1 text-amber-600">
+                  (원가가 입력된 거래만 사용해 임시 표시 중)
+                </p>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-3 gap-3 mt-3">
               <div>
                 <p className="text-xs text-gray-500">매출</p>
                 <p className="text-base font-medium mt-1">{Number(stats.month_revenue).toLocaleString()}원</p>
