@@ -26,6 +26,11 @@ export type LookupPriceParams = {
  *
  * 각 단계가 없으면 다음 단계로 넘어가고, 전부 없으면 unitPrice=null 반환.
  * costPrice는 항상 원가(tier level=0) 기준으로 함께 반환.
+ *
+ * 성능: 쿼리를 2단계로 묶어 병렬 실행 (worst case 6~8 round trips → 2 round trips)
+ *   Phase 1 병렬 (4개): 원가 등급ID, 소비자가 등급ID, 특별단가, 옵션 메타
+ *   Phase 2 병렬 (N+3개): 원가, 등급단가, 소비자가, 옵션별가격들
+ *   단, 특별단가가 적중하면 Phase 2는 원가 쿼리만 기다리고 종료 (2 round trips 유지)
  */
 export async function lookupPrice(
   supabase: SupabaseClient,
@@ -33,96 +38,160 @@ export async function lookupPrice(
 ): Promise<LookupPriceResult> {
   const { productId, customerId, customerTierId, options } = params
 
-  // 원가 조회 (source와 무관하게 항상 시도)
-  let costPrice: number | null = null
-  const { data: costTier } = await supabase
-    .from('price_tiers')
-    .select('id')
-    .eq('level', TIER_LEVEL.COST)
-    .single()
+  // ============================================================
+  // Phase 1: 서로 독립적인 쿼리 4개를 병렬로 실행
+  //   (a) 원가 등급 ID
+  //   (b) 소비자가 등급 ID
+  //   (c) 특별단가
+  //   (d) affects_price 옵션 메타 (customerTierId + options 있을 때만)
+  // ============================================================
+  const productOptsQuery =
+    customerTierId && options
+      ? supabase
+          .from('product_options')
+          .select('option_name, affects_price')
+          .eq('product_id', productId)
+      : Promise.resolve({ data: null as null | { option_name: string; affects_price: boolean }[] })
 
-  if (costTier) {
-    const { data: costData } = await supabase
-      .from('product_prices')
-      .select('price')
-      .eq('product_id', productId)
-      .eq('tier_id', costTier.id)
-      .single()
-    if (costData) costPrice = costData.price
+  const [costTierResult, consumerTierResult, specialResult, productOptsResult] =
+    await Promise.all([
+      supabase
+        .from('price_tiers')
+        .select('id')
+        .eq('level', TIER_LEVEL.COST)
+        .single(),
+      supabase
+        .from('price_tiers')
+        .select('id')
+        .eq('level', TIER_LEVEL.CONSUMER)
+        .single(),
+      supabase
+        .from('customer_prices')
+        .select('special_price')
+        .eq('customer_id', customerId)
+        .eq('product_id', productId)
+        .single(),
+      productOptsQuery,
+    ])
+
+  const costTier = costTierResult.data as { id: string } | null
+  const consumerTier = consumerTierResult.data as { id: string } | null
+  const specialData = specialResult.data as { special_price: number } | null
+  const productOpts = productOptsResult.data as
+    | { option_name: string; affects_price: boolean }[]
+    | null
+
+  // 원가 쿼리 (costTier ID 확보 후에만 가능)
+  const costPricePromise = costTier
+    ? supabase
+        .from('product_prices')
+        .select('price')
+        .eq('product_id', productId)
+        .eq('tier_id', costTier.id)
+        .single()
+    : Promise.resolve({ data: null as null | { price: number } })
+
+  // ============================================================
+  // 특별단가 적중 시: 원가만 기다리고 종료 (2 round trips)
+  // ============================================================
+  if (specialData) {
+    const costResult = await costPricePromise
+    const costData = costResult.data as { price: number } | null
+    return {
+      unitPrice: specialData.special_price,
+      costPrice: costData?.price ?? null,
+      source: '특별단가',
+    }
   }
 
-  // 1. 특별단가
-  const { data: specialPrice } = await supabase
-    .from('customer_prices')
-    .select('special_price')
-    .eq('customer_id', customerId)
-    .eq('product_id', productId)
-    .single()
+  // ============================================================
+  // Phase 2: 원가 + 등급단가 + 소비자가 + 옵션별가격들을 모두 병렬로
+  //   우선순위 판단은 결과 받은 뒤에 수행 (옵션 > 등급 > 소비자)
+  // ============================================================
 
-  if (specialPrice) {
-    return { unitPrice: specialPrice.special_price, costPrice, source: '특별단가' }
-  }
+  // 옵션별 가격 후보 목록 생성: affects_price=true이면서 사용자가 값 선택한 것만
+  const optionLookups: Array<{
+    optName: string
+    optValue: string
+    promise: Promise<{ data: { price: number } | null }>
+  }> = []
 
-  // 2. 옵션별 가격 (customerTierId + options 둘 다 있을 때만)
-  if (customerTierId && options) {
-    const { data: productOpts } = await supabase
-      .from('product_options')
-      .select('option_name, affects_price')
-      .eq('product_id', productId)
-
-    const affectsOpts = productOpts?.filter((o) => o.affects_price) || []
+  if (customerTierId && options && productOpts) {
+    const affectsOpts = productOpts.filter((o) => o.affects_price)
     for (const opt of affectsOpts) {
       const val = options[opt.option_name]
       if (val) {
-        const { data: optPrice } = await supabase
-          .from('option_prices')
-          .select('price')
-          .eq('product_id', productId)
-          .eq('option_name', opt.option_name)
-          .eq('option_value', val)
-          .eq('tier_id', customerTierId)
-          .single()
-        if (optPrice) {
-          return {
-            unitPrice: optPrice.price,
-            costPrice,
-            source: `옵션별 가격 (${opt.option_name}: ${val})`,
-          }
-        }
+        optionLookups.push({
+          optName: opt.option_name,
+          optValue: val,
+          promise: supabase
+            .from('option_prices')
+            .select('price')
+            .eq('product_id', productId)
+            .eq('option_name', opt.option_name)
+            .eq('option_value', val)
+            .eq('tier_id', customerTierId)
+            .single() as unknown as Promise<{ data: { price: number } | null }>,
+        })
+      }
+    }
+  }
+
+  // 등급 단가
+  const tierPricePromise = customerTierId
+    ? supabase
+        .from('product_prices')
+        .select('price')
+        .eq('product_id', productId)
+        .eq('tier_id', customerTierId)
+        .single()
+    : Promise.resolve({ data: null as null | { price: number } })
+
+  // 소비자가
+  const consumerPricePromise = consumerTier
+    ? supabase
+        .from('product_prices')
+        .select('price')
+        .eq('product_id', productId)
+        .eq('tier_id', consumerTier.id)
+        .single()
+    : Promise.resolve({ data: null as null | { price: number } })
+
+  // 모두 동시 대기
+  const [costResult, tierResult, consumerResult, ...optionResults] =
+    await Promise.all([
+      costPricePromise,
+      tierPricePromise,
+      consumerPricePromise,
+      ...optionLookups.map((l) => l.promise),
+    ])
+
+  const costPrice = (costResult.data as { price: number } | null)?.price ?? null
+
+  // 우선순위대로 결정 (원본 함수와 동일)
+  // 2. 옵션별 가격 (순서대로 첫 번째 매칭되는 옵션)
+  for (let i = 0; i < optionResults.length; i++) {
+    const optData = optionResults[i].data as { price: number } | null
+    if (optData) {
+      const lookup = optionLookups[i]
+      return {
+        unitPrice: optData.price,
+        costPrice,
+        source: `옵션별 가격 (${lookup.optName}: ${lookup.optValue})`,
       }
     }
   }
 
   // 3. 등급 단가
-  if (customerTierId) {
-    const { data: tierPrice } = await supabase
-      .from('product_prices')
-      .select('price')
-      .eq('product_id', productId)
-      .eq('tier_id', customerTierId)
-      .single()
-    if (tierPrice) {
-      return { unitPrice: tierPrice.price, costPrice, source: '등급 단가' }
-    }
+  const tierData = tierResult.data as { price: number } | null
+  if (tierData) {
+    return { unitPrice: tierData.price, costPrice, source: '등급 단가' }
   }
 
   // 4. 소비자가
-  const { data: consumerTier } = await supabase
-    .from('price_tiers')
-    .select('id')
-    .eq('level', TIER_LEVEL.CONSUMER)
-    .single()
-
-  if (consumerTier) {
-    const { data: consumerPrice } = await supabase
-      .from('product_prices')
-      .select('price')
-      .eq('product_id', productId)
-      .eq('tier_id', consumerTier.id)
-      .single()
-    if (consumerPrice) {
-      return { unitPrice: consumerPrice.price, costPrice, source: '소비자가' }
-    }
+  const consumerData = consumerResult.data as { price: number } | null
+  if (consumerData) {
+    return { unitPrice: consumerData.price, costPrice, source: '소비자가' }
   }
 
   return { unitPrice: null, costPrice, source: '가격 미설정' }
